@@ -11,9 +11,9 @@ COLORMAP="tab20c"
 IMPORTANT_STOPS=false
 HIDE_ROUTES=false
 DIRECTION=0
-SKIP_DIRECTION=f
+SKIP_DIRECTION=false
 # Define the list of stop IDs you want to process
-STOP_IDS=("5wx" "32p" "be" "1mm" "2wy")
+STOP_IDS=("5wx" "32p")
 # Function to display usage
 usage() {
     echo "Usage: $0 [-g gtfs_file] [-c csv_file] [-o output_dir] [-m min_trips] [-p output_file_prefix] [-x] [-l colormap] [-i] [-r] [-d direction] [-s]"
@@ -33,10 +33,10 @@ usage() {
 }
 
 # Parse command-line arguments
-while getopts "g:c:o:m:p:xl:irsd:" opt; do
+while getopts "g:t:c:o:m:p:xl:irsd:" opt; do
     case $opt in
         g) GTFS_FILE="$OPTARG" ;;
-        t) STOP_IDS="$OPTARG" ;;
+        t) IFS=' ' read -r -a STOP_IDS <<< "$OPTARG" ;;
         c) CSV_FILE="$OPTARG" ;;
         o) OUTPUT_DIR="$OPTARG" ;;
         m) MIN_TRIPS="$OPTARG" ;;
@@ -87,10 +87,13 @@ sanitized_stop_names=${sanitized_stop_names%_}  # Remove trailing underscore
 
 # Define the output file names (update paths to include output directory)
 OUTPUT_FILE="${OUTPUT_DIR}/${OUTPUT_FILE_PREFIX}_all_stops.zip"
-FINAL_MAP_FILE="${OUTPUT_DIR}/${OUTPUT_FILE_PREFIX}_${sanitized_stop_names}_map.svg"
+FINAL_MAP_GEOGRAPHIC="${OUTPUT_DIR}/${OUTPUT_FILE_PREFIX}_${sanitized_stop_names}_geographic.svg"
+FINAL_MAP_SCHEMATIC="${OUTPUT_DIR}/${OUTPUT_FILE_PREFIX}_${sanitized_stop_names}_schematic.svg"
 
 echo "Processing GTFS data for stop IDs: ${STOP_IDS[*]}"
-echo "Output will be saved to: $FINAL_MAP_FILE"
+echo "Output will be saved to:"
+echo "  Geographic: $FINAL_MAP_GEOGRAPHIC"
+echo "  Schematic: $FINAL_MAP_SCHEMATIC"
 
 # Run the GTFS processing for all stop IDs at once, add viz_file name using final_map_file as template
 python gtfs_process_cli.py "$GTFS_FILE" "${STOP_IDS[@]}" \
@@ -101,7 +104,7 @@ python gtfs_process_cli.py "$GTFS_FILE" "${STOP_IDS[@]}" \
     $([ "$HIDE_ROUTES" = true ] && echo "--hide-routes") \
     --direction "$DIRECTION" \
     $([ "$SKIP_DIRECTION" = true ] && echo "--skip-direction-filter" ) \
-    --viz-file "$(basename "$FINAL_MAP_FILE")"
+    --viz-file "${sanitized_stop_names}.html"
 
 # Check if the GTFS processing was successful
 if [ $? -ne 0 ]; then
@@ -116,23 +119,35 @@ if [ ! -f "$OUTPUT_FILE" ]; then
 fi
 
 # Run the subsequent commands
-gtfs2graph_cmd="gtfs2graph -m bus $OUTPUT_FILE"
+gtfs2graph_cmd="gtfs2graph -m bus \"$OUTPUT_FILE\""
 topo_cmd="topo"
-color_geojson_cmd="python color_geojson_cli.py -c $COLORMAP"
+color_geojson_cmd="python color_geojson_cli.py -c \"$COLORMAP\""
 loom_cmd="loom"
-octi_cmd="octi"
-transitmap_cmd="transitmap -l > $FINAL_MAP_FILE"
 
-# Chain the commands using pipes
-if [ "$OCTI_ENABLED" = true ]; then
-    eval "$gtfs2graph_cmd | $topo_cmd | $color_geojson_cmd | $loom_cmd | $octi_cmd | $transitmap_cmd"
-else
-    eval "$gtfs2graph_cmd | $topo_cmd | $color_geojson_cmd | $loom_cmd | $transitmap_cmd"
-fi
+# Define the common pipeline components
+COMMON_PIPELINE="$gtfs2graph_cmd | $topo_cmd | $color_geojson_cmd | $loom_cmd"
 
-# Check if the final map generation was successful
-if [ $? -eq 0 ]; then
-    echo "Successfully generated map: $FINAL_MAP_FILE"
+# Create temporary file
+TEMP_FILE=$(mktemp)
+trap 'rm -f "$TEMP_FILE"' EXIT  # Clean up temp file on script exit
+
+# Run common pipeline once and store result
+echo "Running common preprocessing pipeline..."
+eval "$COMMON_PIPELINE > \"$TEMP_FILE\""
+
+# Generate both maps from the cached result
+echo "Generating geographic map..."
+cat "$TEMP_FILE" | transitmap -l > "$FINAL_MAP_GEOGRAPHIC"
+
+echo "Generating schematic map..."
+cat "$TEMP_FILE" | octi | transitmap -l > "$FINAL_MAP_SCHEMATIC"
+
+# Check if both map generations were successful
+if [ -f "$FINAL_MAP_GEOGRAPHIC" ] && [ -f "$FINAL_MAP_SCHEMATIC" ]; then
+    echo "Successfully generated maps:"
+    echo "  Geographic: $FINAL_MAP_GEOGRAPHIC"
+    echo "  Schematic: $FINAL_MAP_SCHEMATIC"
 else
-    echo "Error: Map generation failed."x
+    echo "Error: One or both map generations failed."
+    exit 1
 fi
