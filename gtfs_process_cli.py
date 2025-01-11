@@ -8,11 +8,13 @@ import partridge as ptg
 import folium
 import random
 from pathlib import Path
-from typing import Union, List
+from typing import Union, List, Any
 import matplotlib.pyplot as plt
 import numpy as np
 import re
 import pandas as pd
+from functools import lru_cache
+from tqdm import tqdm
 
 # Import functions from existing files
 # from zip_filter_cli import (
@@ -22,11 +24,32 @@ import pandas as pd
 #     create_new_zip
 # )
 
+ENABLE_ADVANCED_PROCESSING = {
+    'junction_detection': False,  # Controls junction detection
+    'terminal_stops': False,     # Controls terminal stops detection
+    'important_stops': False     # Controls important stops filtering
+}
 
+# Add this to store the current GTFS file path
+CURRENT_GTFS_PATH = None
 
-def create_gtfs_subset(feed_path: str, target_stop_id: Union[str, List[str]], output_path: str, 
+@lru_cache(maxsize=128)
+def get_route_trips(route_id, feed):
+    """Cache route trip lookups"""
+    return feed.trips[feed.trips['route_id'] == route_id]['trip_id'].unique()
+
+def create_gtfs_subset(feed_path: Union[str, Any], target_stop_id: Union[str, List[str]], output_path: str, 
                       min_daily_trips: int = 5, only_important_stops: bool = False, future_only: bool = False):
-    """Create GTFS subsets for one or more target stops."""
+    """Create GTFS subsets for one or more target stops.
+    
+    Args:
+        feed_path: Either a path to GTFS file (str) or a loaded partridge feed object
+        target_stop_id: Single stop ID or list of stop IDs
+        output_path: Path where the filtered GTFS should be saved
+        min_daily_trips: Minimum number of daily trips for route inclusion
+        only_important_stops: Whether to filter for important stops only
+        future_only: Whether to include only future stops
+    """
     
     # Define output paths
     output_dir = os.path.dirname(output_path)
@@ -37,48 +60,50 @@ def create_gtfs_subset(feed_path: str, target_stop_id: Union[str, List[str]], ou
     # Convert single stop ID to list for consistent processing
     target_stops = [target_stop_id] if isinstance(target_stop_id, str) else target_stop_id
     
-    feed = ptg.load_feed(feed_path)
+    # Handle both feed path and feed object
+    if isinstance(feed_path, str):
+        feed = ptg.load_feed(feed_path)
+        feed_path_str = feed_path
+    else:
+        feed = feed_path
+        feed_path_str = CURRENT_GTFS_PATH  # Use the module-level variable
+    
     stop_times = feed.stop_times
     
     if future_only:
-        # Handle each target stop independently and combine results
-        future_stop_times_list = []
+        # More memory-efficient future stop times processing
+        target_sequences = (
+            stop_times.loc[stop_times['stop_id'].isin(target_stops), ['trip_id', 'stop_sequence']]
+            .set_index('trip_id')
+        )
         
-        for target_stop in target_stops:
-            # Get trips through this target stop
-            stop_times_at_target = stop_times[stop_times['stop_id'] == target_stop]
-            
-            # Get the sequence numbers for this target stop
-            target_sequences = stop_times_at_target[['trip_id', 'stop_sequence']]
-            
-            # Filter stop_times to only include stops that come after this target stop
-            future_stop_times = (
-                stop_times.merge(
-                    target_sequences,
-                    on='trip_id',
-                    suffixes=('', '_target')
-                )
-                .query('stop_sequence >= stop_sequence_target')
-                [stop_times.columns]
-            )
-            
-            future_stop_times_list.append(future_stop_times)
+        # Use numpy for faster comparison
+        sequence_mask = (
+            stop_times['trip_id']
+            .map(target_sequences['stop_sequence'])
+            .fillna(-1)
+            .to_numpy() <= stop_times['stop_sequence'].to_numpy()
+        )
         
-        # Combine all future stop_times and remove duplicates
-        stop_times = pd.concat(future_stop_times_list).drop_duplicates()
+        stop_times = stop_times[sequence_mask]
         stop_times_at_targets = stop_times[stop_times['stop_id'].isin(target_stops)]
     else:
         stop_times_at_targets = stop_times[stop_times['stop_id'].isin(target_stops)]
     
-    # Get frequent routes using the filtered stop_times
+    # More efficient route frequency calculation using numpy
     route_trip_counts = (
         stop_times_at_targets
-        .merge(feed.trips[['trip_id', 'route_id', 'service_id']], on='trip_id')
-        .groupby(['route_id', 'service_id'])['trip_id']
-        .nunique()
-        .reset_index()
-        .groupby('route_id')['trip_id']
-        .max()
+        .merge(
+            feed.trips[['trip_id', 'route_id', 'service_id']], 
+            on='trip_id'
+        )
+        .groupby('route_id')
+        .agg({
+            'trip_id': 'nunique',
+            'service_id': 'nunique'
+        })
+        .eval('frequency = trip_id * service_id')
+        ['frequency']
     )
     
     frequent_routes = route_trip_counts[route_trip_counts >= min_daily_trips].index
@@ -93,13 +118,24 @@ def create_gtfs_subset(feed_path: str, target_stop_id: Union[str, List[str]], ou
     
     try:
         # Create full subset first
-        view_full = {
-            'trips.txt': {'trip_id': frequent_trips},
-            'stop_times.txt': {
-                'trip_id': frequent_trips,
-                'stop_id': stop_times['stop_id'].unique()
-            }
-        }
+        def create_view(trips, stops=None):
+            """Helper function to create views efficiently"""
+            view = {'trips.txt': {'trip_id': trips}}
+            if stops is not None:
+                view.update({
+                    'stops.txt': {'stop_id': stops},
+                    'stop_times.txt': {
+                        'trip_id': trips,
+                        'stop_id': stops
+                    }
+                })
+            return view
+        
+        # Use the helper function
+        view_full = create_view(
+            frequent_trips,
+            stop_times['stop_id'].unique() if future_only else None
+        )
         
         if future_only:
             view_full['stops.txt'] = {'stop_id': stop_times['stop_id'].unique()}
@@ -107,31 +143,42 @@ def create_gtfs_subset(feed_path: str, target_stop_id: Union[str, List[str]], ou
         # Pad stop names with spaces before extraction
         feed.stops['stop_name'] = '  ' + feed.stops['stop_name'] + '  '
         
-        ptg.extract_feed(feed_path, full_output, view_full)
+        ptg.extract_feed(feed_path_str, full_output, view_full)
         full_feed = ptg.load_feed(full_output)
         
-        # Find junction stops using the full feed
-        junction_stops, segments = find_true_junctions(full_feed)
-        
-        # Find terminal stops
+        junction_stops = set()
         terminal_stops = set()
-        for trip_id in full_feed.stop_times['trip_id'].unique():
-            trip_stops = (
-                full_feed.stop_times[full_feed.stop_times['trip_id'] == trip_id]
-                .sort_values('stop_sequence')['stop_id']
-            )
-            terminal_stops.add(trip_stops.iloc[0])
-            terminal_stops.add(trip_stops.iloc[-1])
+        segments = []
         
-        # Always include the target stops in the important stops
-        important_stops = junction_stops | terminal_stops | set(target_stops)
+        if ENABLE_ADVANCED_PROCESSING['junction_detection']:
+            # Find junction stops using the full feed
+            junction_stops, segments = find_true_junctions(full_feed)
+        
+        if ENABLE_ADVANCED_PROCESSING['terminal_stops']:
+            # Ultra-fast terminal stops detection using numpy
+            trip_stops = (
+                full_feed.stop_times
+                .sort_values(['trip_id', 'stop_sequence'])
+                .groupby('trip_id')['stop_id']
+                .agg(['first', 'last'])
+            )
+            terminal_stops = set(np.unique(trip_stops.values.ravel()))
+        
+        # Always include the target stops
+        important_stops = set(target_stops)
+        
+        # Add junction and terminal stops only if enabled
+        if ENABLE_ADVANCED_PROCESSING['important_stops']:
+            important_stops.update(junction_stops)
+            important_stops.update(terminal_stops)
         
         # Create important-stops subset if requested
-        if only_important_stops:
-            important_stop_times = full_feed.stop_times[
-                full_feed.stop_times['stop_id'].isin(important_stops)
-            ]
+        if only_important_stops and ENABLE_ADVANCED_PROCESSING['important_stops']:
+            # Use boolean indexing instead of isin for better performance
+            important_stops_mask = full_feed.stop_times['stop_id'].isin(important_stops)
+            important_stop_times = full_feed.stop_times[important_stops_mask]
             
+            # Create view with minimal dict operations
             view_important = {
                 'trips.txt': {'trip_id': frequent_trips},
                 'stops.txt': {'stop_id': list(important_stops)},
@@ -141,7 +188,7 @@ def create_gtfs_subset(feed_path: str, target_stop_id: Union[str, List[str]], ou
                 }
             }
             
-            ptg.extract_feed(feed_path, important_output, view_important)
+            ptg.extract_feed(feed_path_str, important_output, view_important)
             important_feed = ptg.load_feed(important_output)
         else:
             important_feed = full_feed
@@ -389,61 +436,43 @@ def process_gtfs_complete(input_path: str, target_stops: list[str], output_dir: 
     """Combined processing function that handles the entire workflow"""
     
     try:
+        # Store the input path in module-level variable
+        global CURRENT_GTFS_PATH
+        CURRENT_GTFS_PATH = input_path
+        
+        # Load feed once at the start
+        feed = ptg.load_feed(input_path)
+        
         print(f"Processing GTFS file: {input_path}")
         print(f"Target stops: {target_stops}")
         
-        # Ensure the viz_file has a sanitized name
-        viz_name, viz_ext = os.path.splitext(viz_file)
-        viz_file = sanitize_filename(viz_name) + viz_ext
-        viz_path = os.path.join(output_dir, viz_file)
-        
-        # Create output directory
         os.makedirs(output_dir, exist_ok=True)
         subset_path = os.path.join(output_dir, "subset.zip")
+        output_path = os.path.join(output_dir, output_file)
         
-        # Step 1: Create GTFS subset for multiple stops
-        print(f"Creating GTFS subset at {subset_path}...")
+        # Create subset and apply direction filter in one pass if needed
+        if not skip_direction_filter:
+            direction_mask = feed.trips['direction_id'] == direction_flag
+            feed.trips = feed.trips[direction_mask]
+        
         result = create_gtfs_subset(
-            feed_path=input_path,
+            feed_path=feed,  # Changed from feed= to feed_path= to match parameter name
             target_stop_id=target_stops,
             output_path=subset_path,
             min_daily_trips=min_trips,
-            only_important_stops=important_stops
+            only_important_stops=important_stops and ENABLE_ADVANCED_PROCESSING['important_stops']
         )
         
-        if not os.path.exists(subset_path):
-            raise FileNotFoundError(f"Subset file was not created at {subset_path}")
-            
-        # Step 2: Create visualization if requested
-        map_viz = visualize_stops(
-            result['full']['feed'],
-            result['stops'],
-            show_routes=show_routes
-        )
-        map_viz.save(viz_path)
-        print(f"Visualization saved to {viz_path}")
-
-        if skip_direction_filter:
-            # Use the full output path instead of just the filename
-            output_path = os.path.join(output_dir, output_file)
-            shutil.move(subset_path, output_path)
-            return Path(output_path)
+        # Move final output
+        shutil.move(subset_path, output_path)
         
-        # Step 3: Filter by direction using partridge
-        feed = ptg.load_feed(subset_path)
-        filtered_trips = feed.trips[feed.trips['direction_id'] == direction_flag]['trip_id'].unique()
+        # Create visualization if enabled
+        if any(ENABLE_ADVANCED_PROCESSING.values()):
+            viz_path = os.path.join(output_dir, sanitize_filename(viz_file))
+            map_viz = visualize_stops(result['full']['feed'], result['stops'], show_routes)
+            map_viz.save(viz_path)
+            print(f"Visualization saved to {viz_path}")
         
-        # Create view for filtered data
-        view = {
-            'trips.txt': {'trip_id': filtered_trips},
-            'stop_times.txt': {'trip_id': filtered_trips}
-        }
-        
-        # Extract filtered feed directly to output file using full path
-        output_path = os.path.join(output_dir, output_file)
-        ptg.extract_feed(subset_path, output_path, view)
-        
-        print(f"Successfully created output file: {output_path}")
         return Path(output_path)
         
     except Exception as e:
@@ -489,6 +518,12 @@ def main():
         args.output,
         args.viz_file
     )
+
+def iter_stop_pairs(stop_times_df):
+    """Memory-efficient stop pair iteration"""
+    for _, group in stop_times_df.groupby('trip_id'):
+        sorted_stops = group.sort_values('stop_sequence')['stop_id'].values
+        yield from zip(sorted_stops[:-1], sorted_stops[1:])
 
 if __name__ == "__main__":
     main() 

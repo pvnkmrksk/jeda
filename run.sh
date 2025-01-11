@@ -5,7 +5,7 @@ GTFS_FILE="bmtc-2.zip"
 CSV_FILE="stop_trip_counts.csv"
 OUTPUT_DIR="output"
 MIN_TRIPS=5
-OUTPUT_FILE_PREFIX="subset_filtered"
+OUTPUT_FILE_PREFIX="BMTC_transit"
 OCTI_ENABLED=false
 COLORMAP="tab20c"
 IMPORTANT_STOPS=false
@@ -91,26 +91,26 @@ sanitize_filename() {
 
 # Join all stop names with underscores for the filename, with total length limit
 sanitized_stop_names=""
-max_total_length=100  # Adjust this value based on your system's limits
+stop_ids_string=$(IFS=_ ; echo "${STOP_IDS[*]}")  # Join stop IDs with underscore
+max_total_length=50  # Reduced length limit for better compatibility
+
+# Create a shorter version of stop names
 for name in "${stop_names[@]}"; do
-    sanitized_name=$(sanitize_filename "$name")
+    sanitized_name=$(sanitize_filename "$name" | cut -c1-15)  # Limit each name to 15 chars
     if [ -n "$sanitized_stop_names" ]; then
-        # Check if adding this name would exceed the limit
-        if [ ${#sanitized_stop_names} -lt $max_total_length ]; then
-            sanitized_stop_names="${sanitized_stop_names}_${sanitized_name}"
-        fi
+        sanitized_stop_names="${sanitized_stop_names}_${sanitized_name}"
     else
         sanitized_stop_names="$sanitized_name"
     fi
 done
 
-# Truncate the final string if it's still too long
-sanitized_stop_names="${sanitized_stop_names:0:$max_total_length}"
+# Create base filename without extension
+BASE_FILENAME="${OUTPUT_DIR}/${OUTPUT_FILE_PREFIX}_${stop_ids_string}_${sanitized_stop_names}"
 
-# Define the output file names (update paths to include output directory)
-OUTPUT_FILE="${OUTPUT_DIR}/${OUTPUT_FILE_PREFIX}_${sanitized_stop_names}.zip"
-FINAL_MAP_GEOGRAPHIC="${OUTPUT_DIR}/${OUTPUT_FILE_PREFIX}_${sanitized_stop_names}_geographic.svg"
-FINAL_MAP_SCHEMATIC="${OUTPUT_DIR}/${OUTPUT_FILE_PREFIX}_${sanitized_stop_names}_schematic.svg"
+# Define the output file names
+OUTPUT_FILE="${BASE_FILENAME}.zip"
+FINAL_MAP_GEOGRAPHIC="${BASE_FILENAME}_geographic.svg"
+FINAL_MAP_SCHEMATIC="${BASE_FILENAME}_schematic.svg"
 
 echo "Processing GTFS data for stop IDs: ${STOP_IDS[*]}"
 echo "Output will be saved to:"
@@ -121,12 +121,12 @@ echo "  Schematic: $FINAL_MAP_SCHEMATIC"
 python gtfs_process_cli.py "$GTFS_FILE" "${STOP_IDS[@]}" \
     --output-dir "$OUTPUT_DIR" \
     --min-trips "$MIN_TRIPS" \
-    --output "${OUTPUT_FILE_PREFIX}_${sanitized_stop_names}.zip" \
+    --output "${OUTPUT_FILE_PREFIX}_${stop_ids_string}_${sanitized_stop_names}.zip" \
     $([ "$IMPORTANT_STOPS" = true ] && echo "--important-stops-only") \
     $([ "$HIDE_ROUTES" = true ] && echo "--hide-routes") \
     --direction "$DIRECTION" \
     $([ "$SKIP_DIRECTION" = true ] && echo "--skip-direction-filter" ) \
-    --viz-file "${sanitized_stop_names}.html"
+    --viz-file "${stop_ids_string}_${sanitized_stop_names}.html"
 
 # Check if the GTFS processing was successful
 if [ $? -ne 0 ]; then
@@ -173,6 +173,10 @@ if [ -f "$FINAL_MAP_GEOGRAPHIC" ] && [ -f "$FINAL_MAP_SCHEMATIC" ]; then
     echo "Successfully generated maps:"
     echo "  Geographic: $FINAL_MAP_GEOGRAPHIC"
     echo "  Schematic: $FINAL_MAP_SCHEMATIC"
+
+    # Adjust SVG files
+    python3 "$OUTPUT_DIR/adjust_svg.py" "$FINAL_MAP_GEOGRAPHIC" "$FINAL_MAP_GEOGRAPHIC" 0.85
+    python3 "$OUTPUT_DIR/adjust_svg.py" "$FINAL_MAP_SCHEMATIC" "$FINAL_MAP_SCHEMATIC" 0.85
 
     # Convert SVG files to PDF
     FINAL_MAP_GEOGRAPHIC_PDF="${FINAL_MAP_GEOGRAPHIC%.svg}.pdf"

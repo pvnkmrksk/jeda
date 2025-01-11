@@ -10,6 +10,24 @@ def adjust_svg_text(input_file, output_file, scale_factor=1.3):
     tree = ET.parse(input_file)
     root = tree.getroot()
     
+    # Add font definitions to ensure text rendering
+    defs = root.find(".//{http://www.w3.org/2000/svg}defs")
+    if defs is None:
+        defs = ET.SubElement(root, "{http://www.w3.org/2000/svg}defs")
+    
+    # Add default font style
+    style = ET.SubElement(defs, "{http://www.w3.org/2000/svg}style")
+    style.set("type", "text/css")
+    style.text = """
+        @font-face {
+            font-family: 'Helvetica';
+            src: local('Helvetica');
+        }
+        text {
+            font-family: Helvetica, Arial, 'Nimbus Sans L', sans-serif;
+        }
+    """
+    
     # Find all text elements
     for text in root.findall(".//*{http://www.w3.org/2000/svg}text"):
         # Get current font size
@@ -23,6 +41,13 @@ def adjust_svg_text(input_file, output_file, scale_factor=1.3):
         
         # Set the new font size
         text.set('font-size', str(new_font_size))
+        
+        # Ensure font-family is set
+        text.set('font-family', 'Helvetica, Arial, "Nimbus Sans L", sans-serif')
+        
+        # Add optional text rendering attributes for better compatibility
+        text.set('text-rendering', 'geometricPrecision')
+        text.set('font-weight', text.get('font-weight', 'normal'))
 
     # Save the modified SVG
     tree.write(output_file, encoding='utf-8', xml_declaration=True)
