@@ -13,12 +13,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Import functions from existing files
-from zip_filter_cli import (
-    extract_zip,
-    filter_trips,
-    filter_stop_times,
-    create_new_zip
-)
+# from zip_filter_cli import (
+#     extract_zip,
+#     filter_trips,
+#     filter_stop_times,
+#     create_new_zip
+# )
 
 
 
@@ -64,6 +64,10 @@ def create_gtfs_subset(feed_path: str, target_stop_id: Union[str, List[str]], ou
     try:
         # Create full subset first
         view_full = {'trips.txt': {'trip_id': frequent_trips}}
+        
+        # Pad stop names with spaces before extraction
+        feed.stops['stop_name'] = '  ' + feed.stops['stop_name'] + '  '
+        
         ptg.extract_feed(feed_path, full_output, view_full)
         full_feed = ptg.load_feed(full_output)
         
@@ -342,7 +346,7 @@ def process_gtfs_complete(input_path: str, target_stops: list[str], output_dir: 
         subset_path = os.path.join(output_dir, "subset.zip")
         
         # Step 1: Create GTFS subset for multiple stops
-        print("Creating GTFS subset...")
+        print(f"Creating GTFS subset at {subset_path}...")
         result = create_gtfs_subset(
             feed_path=input_path,
             target_stop_id=target_stops,
@@ -355,43 +359,37 @@ def process_gtfs_complete(input_path: str, target_stops: list[str], output_dir: 
             raise FileNotFoundError(f"Subset file was not created at {subset_path}")
             
         # Step 2: Create visualization if requested
-        # Create visualization for all stop in one file
-        viz_path = os.path.join(output_dir, f"{viz_file}")
+        viz_path = os.path.join(output_dir, viz_file)
         map_viz = visualize_stops(
             result['full']['feed'],
             result['stops'],
             show_routes=show_routes
         )
         map_viz.save(viz_path)
-
         print(f"Visualization saved to {viz_path}")
+
         if skip_direction_filter:
-            # Just rename the subset file to the output file
-            shutil.move(subset_path, output_file)
-            return Path(output_file)
+            # Use the full output path instead of just the filename
+            output_path = os.path.join(output_dir, output_file)
+            shutil.move(subset_path, output_path)
+            return Path(output_path)
         
-        # Step 3: Filter by direction (only if not skipped)
-        temp_extract_dir = Path(output_dir) / 'temp_extracted'
-        os.makedirs(temp_extract_dir, exist_ok=True)
-
-        main_extracted_dir = extract_zip(subset_path, temp_extract_dir)
-        trips_file_path = main_extracted_dir / 'trips.txt'
-        stop_times_file_path = main_extracted_dir / 'stop_times.txt'
-
-        filtered_trips_df = filter_trips(trips_file_path, direction_flag)
-        trip_ids = filtered_trips_df['trip_id'].tolist()
-        filtered_stop_times_df = filter_stop_times(stop_times_file_path, trip_ids)
-
-        # Save filtered files back to the extracted directory
-        filtered_trips_df.to_csv(trips_file_path, index=False)
-        filtered_stop_times_df.to_csv(stop_times_file_path, index=False)
-
-        # Create temporary zip file and read its contents
-        new_zip_name = Path(output_dir) / output_file
-        create_new_zip(main_extracted_dir, new_zip_name)
+        # Step 3: Filter by direction using partridge
+        feed = ptg.load_feed(subset_path)
+        filtered_trips = feed.trips[feed.trips['direction_id'] == direction_flag]['trip_id'].unique()
         
-        print(f"Successfully created output file: {new_zip_name}")
-        return new_zip_name
+        # Create view for filtered data
+        view = {
+            'trips.txt': {'trip_id': filtered_trips},
+            'stop_times.txt': {'trip_id': filtered_trips}
+        }
+        
+        # Extract filtered feed directly to output file using full path
+        output_path = os.path.join(output_dir, output_file)
+        ptg.extract_feed(subset_path, output_path, view)
+        
+        print(f"Successfully created output file: {output_path}")
+        return Path(output_path)
         
     except Exception as e:
         print(f"Error processing GTFS data: {str(e)}", file=sys.stderr)

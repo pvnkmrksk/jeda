@@ -3,7 +3,7 @@
 # Default values for variables
 GTFS_FILE="bmtc-2.zip"
 CSV_FILE="stop_trip_counts.csv"
-OUTPUT_DIR="examples"
+OUTPUT_DIR="output"
 MIN_TRIPS=5
 OUTPUT_FILE_PREFIX="subset_filtered"
 OCTI_ENABLED=false
@@ -86,7 +86,7 @@ sanitized_stop_names=$(printf "%s_" "${stop_names[@]}" | tr ' ' '_')
 sanitized_stop_names=${sanitized_stop_names%_}  # Remove trailing underscore
 
 # Define the output file names (update paths to include output directory)
-OUTPUT_FILE="${OUTPUT_DIR}/${OUTPUT_FILE_PREFIX}_all_stops.zip"
+OUTPUT_FILE="${OUTPUT_DIR}/${OUTPUT_FILE_PREFIX}_${sanitized_stop_names}.zip"
 FINAL_MAP_GEOGRAPHIC="${OUTPUT_DIR}/${OUTPUT_FILE_PREFIX}_${sanitized_stop_names}_geographic.svg"
 FINAL_MAP_SCHEMATIC="${OUTPUT_DIR}/${OUTPUT_FILE_PREFIX}_${sanitized_stop_names}_schematic.svg"
 
@@ -99,7 +99,7 @@ echo "  Schematic: $FINAL_MAP_SCHEMATIC"
 python gtfs_process_cli.py "$GTFS_FILE" "${STOP_IDS[@]}" \
     --output-dir "$OUTPUT_DIR" \
     --min-trips "$MIN_TRIPS" \
-    --output "$(basename "$OUTPUT_FILE")" \
+    --output "${OUTPUT_FILE_PREFIX}_${sanitized_stop_names}.zip" \
     $([ "$IMPORTANT_STOPS" = true ] && echo "--important-stops-only") \
     $([ "$HIDE_ROUTES" = true ] && echo "--hide-routes") \
     --direction "$DIRECTION" \
@@ -122,25 +122,28 @@ fi
 gtfs2graph_cmd="gtfs2graph -m bus \"$OUTPUT_FILE\""
 topo_cmd="topo"
 color_geojson_cmd="python color_geojson_cli.py -c \"$COLORMAP\""
-loom_cmd="loom"
+loom_cmd="loom --no-prune"
 
-# Define the common pipeline components
-COMMON_PIPELINE="$gtfs2graph_cmd | $topo_cmd | $color_geojson_cmd | $loom_cmd"
+# Create temporary files in output directory
+TEMP_BASE="${OUTPUT_DIR}/transitmap_base.json"
+TEMP_OCTI="${OUTPUT_DIR}/transitmap_octi.json"
 
-# Create temporary file
-TEMP_FILE=$(mktemp)
-trap 'rm -f "$TEMP_FILE"' EXIT  # Clean up temp file on script exit
+# Run base pipeline
+echo "Running base preprocessing pipeline..."
+eval "$gtfs2graph_cmd | $topo_cmd | $color_geojson_cmd | $loom_cmd > \"$TEMP_BASE\""
 
-# Run common pipeline once and store result
-echo "Running common preprocessing pipeline..."
-eval "$COMMON_PIPELINE > \"$TEMP_FILE\""
-
-# Generate both maps from the cached result
+# Generate geographic map
 echo "Generating geographic map..."
-cat "$TEMP_FILE" | transitmap -l > "$FINAL_MAP_GEOGRAPHIC"
+cat "$TEMP_BASE" | transitmap -l > "$FINAL_MAP_GEOGRAPHIC"
 
+# Generate schematic map with fresh pipeline
 echo "Generating schematic map..."
-cat "$TEMP_FILE" | octi | transitmap -l > "$FINAL_MAP_SCHEMATIC"
+if [ "$OCTI_ENABLED" = true ]; then
+    eval "$gtfs2graph_cmd | $topo_cmd | $color_geojson_cmd | octi | $loom_cmd > \"$TEMP_OCTI\""
+    cat "$TEMP_OCTI" | transitmap -l > "$FINAL_MAP_SCHEMATIC"
+else
+    cat "$TEMP_BASE" | octi | transitmap -l > "$FINAL_MAP_SCHEMATIC"
+fi
 
 # Check if both map generations were successful
 if [ -f "$FINAL_MAP_GEOGRAPHIC" ] && [ -f "$FINAL_MAP_SCHEMATIC" ]; then
