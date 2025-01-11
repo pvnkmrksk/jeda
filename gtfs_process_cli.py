@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Union, List
 import matplotlib.pyplot as plt
 import numpy as np
+import re
+import pandas as pd
 
 # Import functions from existing files
 # from zip_filter_cli import (
@@ -23,7 +25,7 @@ import numpy as np
 
 
 def create_gtfs_subset(feed_path: str, target_stop_id: Union[str, List[str]], output_path: str, 
-                      min_daily_trips: int = 5, only_important_stops: bool = False):
+                      min_daily_trips: int = 5, only_important_stops: bool = False, future_only: bool = False):
     """Create GTFS subsets for one or more target stops."""
     
     # Define output paths
@@ -36,11 +38,39 @@ def create_gtfs_subset(feed_path: str, target_stop_id: Union[str, List[str]], ou
     target_stops = [target_stop_id] if isinstance(target_stop_id, str) else target_stop_id
     
     feed = ptg.load_feed(feed_path)
+    stop_times = feed.stop_times
     
-    # Get all trips through any of the target stops
-    stop_times_at_targets = feed.stop_times[feed.stop_times['stop_id'].isin(target_stops)]
+    if future_only:
+        # Handle each target stop independently and combine results
+        future_stop_times_list = []
+        
+        for target_stop in target_stops:
+            # Get trips through this target stop
+            stop_times_at_target = stop_times[stop_times['stop_id'] == target_stop]
+            
+            # Get the sequence numbers for this target stop
+            target_sequences = stop_times_at_target[['trip_id', 'stop_sequence']]
+            
+            # Filter stop_times to only include stops that come after this target stop
+            future_stop_times = (
+                stop_times.merge(
+                    target_sequences,
+                    on='trip_id',
+                    suffixes=('', '_target')
+                )
+                .query('stop_sequence >= stop_sequence_target')
+                [stop_times.columns]
+            )
+            
+            future_stop_times_list.append(future_stop_times)
+        
+        # Combine all future stop_times and remove duplicates
+        stop_times = pd.concat(future_stop_times_list).drop_duplicates()
+        stop_times_at_targets = stop_times[stop_times['stop_id'].isin(target_stops)]
+    else:
+        stop_times_at_targets = stop_times[stop_times['stop_id'].isin(target_stops)]
     
-    # Get frequent routes
+    # Get frequent routes using the filtered stop_times
     route_trip_counts = (
         stop_times_at_targets
         .merge(feed.trips[['trip_id', 'route_id', 'service_id']], on='trip_id')
@@ -63,7 +93,16 @@ def create_gtfs_subset(feed_path: str, target_stop_id: Union[str, List[str]], ou
     
     try:
         # Create full subset first
-        view_full = {'trips.txt': {'trip_id': frequent_trips}}
+        view_full = {
+            'trips.txt': {'trip_id': frequent_trips},
+            'stop_times.txt': {
+                'trip_id': frequent_trips,
+                'stop_id': stop_times['stop_id'].unique()
+            }
+        }
+        
+        if future_only:
+            view_full['stops.txt'] = {'stop_id': stop_times['stop_id'].unique()}
         
         # Pad stop names with spaces before extraction
         feed.stops['stop_name'] = '  ' + feed.stops['stop_name'] + '  '
@@ -332,6 +371,17 @@ def visualize_stops(feed, stop_types, show_routes=True):
     m.get_root().html.add_child(folium.Element(legend_html))
     
     return m
+
+def sanitize_filename(name: str) -> str:
+    """Sanitize a string to be safe for filenames."""
+    # Replace problematic characters with underscores
+    # Remove or replace special characters and spaces
+    name = re.sub(r'[/\\?%*:|"<>\s,]', '_', name)
+    # Remove multiple consecutive underscores
+    name = re.sub(r'_+', '_', name)
+    # Remove leading/trailing underscores
+    return name.strip('_')
+
 def process_gtfs_complete(input_path: str, target_stops: list[str], output_dir: str="examples", 
                          min_trips: int=5, important_stops: bool=True, show_routes: bool=True,
                          skip_direction_filter: bool=False, direction_flag: int=1, 
@@ -342,6 +392,12 @@ def process_gtfs_complete(input_path: str, target_stops: list[str], output_dir: 
         print(f"Processing GTFS file: {input_path}")
         print(f"Target stops: {target_stops}")
         
+        # Ensure the viz_file has a sanitized name
+        viz_name, viz_ext = os.path.splitext(viz_file)
+        viz_file = sanitize_filename(viz_name) + viz_ext
+        viz_path = os.path.join(output_dir, viz_file)
+        
+        # Create output directory
         os.makedirs(output_dir, exist_ok=True)
         subset_path = os.path.join(output_dir, "subset.zip")
         
@@ -359,7 +415,6 @@ def process_gtfs_complete(input_path: str, target_stops: list[str], output_dir: 
             raise FileNotFoundError(f"Subset file was not created at {subset_path}")
             
         # Step 2: Create visualization if requested
-        viz_path = os.path.join(output_dir, viz_file)
         map_viz = visualize_stops(
             result['full']['feed'],
             result['stops'],

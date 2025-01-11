@@ -81,9 +81,31 @@ for stop_id in "${STOP_IDS[@]}"; do
     fi
 done
 
-# Join all stop names with underscores for the filename
-sanitized_stop_names=$(printf "%s_" "${stop_names[@]}" | tr ' ' '_')
-sanitized_stop_names=${sanitized_stop_names%_}  # Remove trailing underscore
+# Function to sanitize filenames and limit length
+sanitize_filename() {
+    # First sanitize the string
+    local sanitized=$(echo "$1" | sed -e 's/[/\\?%*:|"<>, ]/_/g' -e 's/__*/_/g' -e 's/^_//' -e 's/_$//')
+    # Then truncate to 30 characters (adjust this number if needed)
+    echo "${sanitized:0:30}"
+}
+
+# Join all stop names with underscores for the filename, with total length limit
+sanitized_stop_names=""
+max_total_length=100  # Adjust this value based on your system's limits
+for name in "${stop_names[@]}"; do
+    sanitized_name=$(sanitize_filename "$name")
+    if [ -n "$sanitized_stop_names" ]; then
+        # Check if adding this name would exceed the limit
+        if [ ${#sanitized_stop_names} -lt $max_total_length ]; then
+            sanitized_stop_names="${sanitized_stop_names}_${sanitized_name}"
+        fi
+    else
+        sanitized_stop_names="$sanitized_name"
+    fi
+done
+
+# Truncate the final string if it's still too long
+sanitized_stop_names="${sanitized_stop_names:0:$max_total_length}"
 
 # Define the output file names (update paths to include output directory)
 OUTPUT_FILE="${OUTPUT_DIR}/${OUTPUT_FILE_PREFIX}_${sanitized_stop_names}.zip"
@@ -134,22 +156,35 @@ eval "$gtfs2graph_cmd | $topo_cmd | $color_geojson_cmd | $loom_cmd > \"$TEMP_BAS
 
 # Generate geographic map
 echo "Generating geographic map..."
-cat "$TEMP_BASE" | transitmap -l > "$FINAL_MAP_GEOGRAPHIC"
+
+cat "$TEMP_BASE" | transitmap -l --station-label-textsize 100 > "$FINAL_MAP_GEOGRAPHIC"
 
 # Generate schematic map with fresh pipeline
 echo "Generating schematic map..."
-if [ "$OCTI_ENABLED" = true ]; then
-    eval "$gtfs2graph_cmd | $topo_cmd | $color_geojson_cmd | octi | $loom_cmd > \"$TEMP_OCTI\""
-    cat "$TEMP_OCTI" | transitmap -l > "$FINAL_MAP_SCHEMATIC"
-else
-    cat "$TEMP_BASE" | octi | transitmap -l > "$FINAL_MAP_SCHEMATIC"
-fi
+# if [ "$OCTI_ENABLED" = true ]; then
+    # eval "$gtfs2graph_cmd | $topo_cmd | $color_geojson_cmd | octi | $loom_cmd > \"$TEMP_OCTI\""
+    # cat "$TEMP_OCTI" | transitmap -l --station-label-textsize 100 > "$FINAL_MAP_SCHEMATIC"
+# else
+cat "$TEMP_BASE" | octi | transitmap -l --station-label-textsize 100 > "$FINAL_MAP_SCHEMATIC"
+# fi
 
 # Check if both map generations were successful
 if [ -f "$FINAL_MAP_GEOGRAPHIC" ] && [ -f "$FINAL_MAP_SCHEMATIC" ]; then
     echo "Successfully generated maps:"
     echo "  Geographic: $FINAL_MAP_GEOGRAPHIC"
     echo "  Schematic: $FINAL_MAP_SCHEMATIC"
+
+    # Convert SVG files to PDF
+    FINAL_MAP_GEOGRAPHIC_PDF="${FINAL_MAP_GEOGRAPHIC%.svg}.pdf"
+    FINAL_MAP_SCHEMATIC_PDF="${FINAL_MAP_SCHEMATIC%.svg}.pdf"
+
+    echo "Converting SVG files to PDF..."
+    /Applications/Inkscape.app/Contents/MacOS/inkscape --export-filename="$FINAL_MAP_GEOGRAPHIC_PDF" --export-type=pdf "$FINAL_MAP_GEOGRAPHIC"
+    /Applications/Inkscape.app/Contents/MacOS/inkscape --export-filename="$FINAL_MAP_SCHEMATIC_PDF" --export-type=pdf "$FINAL_MAP_SCHEMATIC"
+
+    echo "PDF files generated:"
+    echo "  Geographic PDF: $FINAL_MAP_GEOGRAPHIC_PDF"
+    echo "  Schematic PDF: $FINAL_MAP_SCHEMATIC_PDF"
 else
     echo "Error: One or both map generations failed."
     exit 1
