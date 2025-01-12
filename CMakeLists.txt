@@ -1,12 +1,20 @@
-cmake_minimum_required (VERSION 3.5)
-set(CMAKE_CXX_STANDARD 11)
+cmake_minimum_required(VERSION 3.8)
 
-project (loom)
+project(loom)
 
+# Change to C++17
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Add compile definitions for C++17 ABI
+add_definitions(-D_GLIBCXX_USE_CXX17_ABI=1)
+
+# Rest of your existing configuration...
 if (CMAKE_BUILD_TYPE)
-	string(SUBSTRING ${CMAKE_BUILD_TYPE} 0 1 FIRST_CHAR)
-	string(TOUPPER ${FIRST_CHAR} FIRST_CHAR)
-	string(REGEX REPLACE "^.(.*)" "${FIRST_CHAR}\\1" CMAKE_BUILD_TYPE "${CMAKE_BUILD_TYPE}")
+    string(SUBSTRING ${CMAKE_BUILD_TYPE} 0 1 FIRST_CHAR)
+    string(TOUPPER ${FIRST_CHAR} FIRST_CHAR)
+    string(REGEX REPLACE "^.(.*)" "${FIRST_CHAR}\\1" CMAKE_BUILD_TYPE "${CMAKE_BUILD_TYPE}")
 endif()
 
 enable_testing()
@@ -14,12 +22,15 @@ enable_testing()
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/")
 set(EXECUTABLE_OUTPUT_PATH "${CMAKE_BINARY_DIR}")
 
-find_package(OpenMP)
-if(OPENMP_FOUND)
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+# Protobuf configuration
+set(protobuf_MODULE_COMPATIBLE ON)
+if(APPLE)
+    set(PROTOBUF_USE_STATIC_LIBS ON)
+    set(Protobuf_USE_STATIC_LIBS ON)
 endif()
 
+# Find packages
+find_package(OpenMP)
 find_package(GLPK)
 find_package(Gurobi)
 find_package(COIN)
@@ -41,6 +52,8 @@ endif()
 
 if(Protobuf_FOUND)
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DPROTOBUF_FOUND=1")
+	add_definitions(-DPROTOBUF_USE_STATIC_LIBS)
+	include_directories(${Protobuf_INCLUDE_DIRS})
 endif()
 
 if(GLPK_FOUND)

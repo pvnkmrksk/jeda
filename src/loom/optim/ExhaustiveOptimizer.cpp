@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <unordered_map>
+#include <random>
 #include "loom/optim/ExhaustiveOptimizer.h"
 #include "shared/linegraph/Line.h"
 #include "util/log/Log.h"
@@ -140,7 +141,9 @@ void ExhaustiveOptimizer::initialConfig(const std::set<OptNode*>& g,
       if (sorted) {
         std::sort((*cfg)[e].begin(), (*cfg)[e].end());
       } else {
-        std::random_shuffle((*cfg)[e].begin(), (*cfg)[e].end());
+        std::random_device rd;
+        std::mt19937 g(rd());
+        std::shuffle((*cfg)[e].begin(), (*cfg)[e].end(), g);
       }
     }
   }
