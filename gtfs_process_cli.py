@@ -40,183 +40,67 @@ def get_route_trips(route_id, feed):
 
 def create_gtfs_subset(feed_path: Union[str, Any], target_stop_id: Union[str, List[str]], output_path: str, 
                       min_daily_trips: int = 5, only_important_stops: bool = False, future_only: bool = False):
-    """Create GTFS subsets for one or more target stops.
+    """Optimized GTFS subset creation"""
     
-    Args:
-        feed_path: Either a path to GTFS file (str) or a loaded partridge feed object
-        target_stop_id: Single stop ID or list of stop IDs
-        output_path: Path where the filtered GTFS should be saved
-        min_daily_trips: Minimum number of daily trips for route inclusion
-        only_important_stops: Whether to filter for important stops only
-        future_only: Whether to include only future stops
-    """
+    # Convert target stops to set for O(1) lookup
+    target_stops = set([target_stop_id] if isinstance(target_stop_id, str) else target_stop_id)
     
-    # Define output paths
-    output_dir = os.path.dirname(output_path)
-    base_name = os.path.splitext(os.path.basename(output_path))[0]
-    full_output = os.path.join(output_dir, f"{base_name}_full.zip")
-    important_output = output_path  # This is the final output file
-    
-    # Convert single stop ID to list for consistent processing
-    target_stops = [target_stop_id] if isinstance(target_stop_id, str) else target_stop_id
-    
-    # Handle both feed path and feed object
+    # Load feed once
     if isinstance(feed_path, str):
-        feed = ptg.load_feed(feed_path)
-        feed_path_str = feed_path
+        feed = ptg.load_feed(feed_path, view={'stop_times.txt': None})
     else:
         feed = feed_path
-        feed_path_str = CURRENT_GTFS_PATH  # Use the module-level variable
     
+    # Pre-filter stop_times using numpy for speed
     stop_times = feed.stop_times
+    stop_mask = np.isin(stop_times['stop_id'].to_numpy(), list(target_stops))
+    stop_times_at_targets = stop_times[stop_mask]
     
-    if future_only:
-        # More memory-efficient future stop times processing
-        target_sequences = (
-            stop_times.loc[stop_times['stop_id'].isin(target_stops), ['trip_id', 'stop_sequence']]
-            .set_index('trip_id')
-        )
-        
-        # Use numpy for faster comparison
-        sequence_mask = (
-            stop_times['trip_id']
-            .map(target_sequences['stop_sequence'])
-            .fillna(-1)
-            .to_numpy() <= stop_times['stop_sequence'].to_numpy()
-        )
-        
-        stop_times = stop_times[sequence_mask]
-        stop_times_at_targets = stop_times[stop_times['stop_id'].isin(target_stops)]
-    else:
-        stop_times_at_targets = stop_times[stop_times['stop_id'].isin(target_stops)]
+    # Fast route frequency calculation using numpy operations
+    trip_route_map = pd.Series(
+        feed.trips['route_id'].values,
+        index=feed.trips['trip_id']
+    ).to_dict()
     
-    # More efficient route frequency calculation using numpy
-    route_trip_counts = (
-        stop_times_at_targets
-        .merge(
-            feed.trips[['trip_id', 'route_id', 'service_id']], 
-            on='trip_id'
-        )
-        .groupby('route_id')
-        .agg({
-            'trip_id': 'nunique',
-            'service_id': 'nunique'
-        })
-        .eval('frequency = trip_id * service_id')
-        ['frequency']
-    )
+    # Count trips per route using numpy
+    trips_at_targets = stop_times_at_targets['trip_id'].unique()
+    routes_at_targets = np.array([trip_route_map.get(t) for t in trips_at_targets])
+    route_counts = np.unique(routes_at_targets, return_counts=True)
     
-    frequent_routes = route_trip_counts[route_trip_counts >= min_daily_trips].index
+    # Create route frequency dict
+    route_frequencies = dict(zip(route_counts[0], route_counts[1]))
+    frequent_routes = {r for r, f in route_frequencies.items() if f >= min_daily_trips}
     
-    # Get trips from frequent routes that serve any of the target stops
-    frequent_trips = (
-        feed.trips[feed.trips['route_id'].isin(frequent_routes)]
-        .merge(stop_times_at_targets[['trip_id']], on='trip_id')
-        ['trip_id']
-        .unique()
-    )
+    # Get trips from frequent routes efficiently
+    frequent_trips_mask = np.isin(feed.trips['route_id'].to_numpy(), list(frequent_routes))
+    frequent_trips = set(feed.trips.loc[frequent_trips_mask, 'trip_id'])
     
-    try:
-        # Create full subset first
-        def create_view(trips, stops=None):
-            """Helper function to create views efficiently"""
-            view = {'trips.txt': {'trip_id': trips}}
-            if stops is not None:
-                view.update({
-                    'stops.txt': {'stop_id': stops},
-                    'stop_times.txt': {
-                        'trip_id': trips,
-                        'stop_id': stops
-                    }
-                })
-            return view
-        
-        # Use the helper function
-        view_full = create_view(
-            frequent_trips,
-            stop_times['stop_id'].unique() if future_only else None
-        )
-        
-        if future_only:
-            view_full['stops.txt'] = {'stop_id': stop_times['stop_id'].unique()}
-        
-        # Pad stop names with spaces before extraction
-        feed.stops['stop_name'] = '  ' + feed.stops['stop_name'] + '  '
-        
-        ptg.extract_feed(feed_path_str, full_output, view_full)
-        full_feed = ptg.load_feed(full_output)
-        
-        junction_stops = set()
-        terminal_stops = set()
-        segments = []
-        
-        if ENABLE_ADVANCED_PROCESSING['junction_detection']:
-            # Find junction stops using the full feed
-            junction_stops, segments = find_true_junctions(full_feed)
-        
-        if ENABLE_ADVANCED_PROCESSING['terminal_stops']:
-            # Ultra-fast terminal stops detection using numpy
-            trip_stops = (
-                full_feed.stop_times
-                .sort_values(['trip_id', 'stop_sequence'])
-                .groupby('trip_id')['stop_id']
-                .agg(['first', 'last'])
-            )
-            terminal_stops = set(np.unique(trip_stops.values.ravel()))
-        
-        # Always include the target stops
-        important_stops = set(target_stops)
-        
-        # Add junction and terminal stops only if enabled
-        if ENABLE_ADVANCED_PROCESSING['important_stops']:
-            important_stops.update(junction_stops)
-            important_stops.update(terminal_stops)
-        
-        # Create important-stops subset if requested
-        if only_important_stops and ENABLE_ADVANCED_PROCESSING['important_stops']:
-            # Use boolean indexing instead of isin for better performance
-            important_stops_mask = full_feed.stop_times['stop_id'].isin(important_stops)
-            important_stop_times = full_feed.stop_times[important_stops_mask]
-            
-            # Create view with minimal dict operations
-            view_important = {
-                'trips.txt': {'trip_id': frequent_trips},
-                'stops.txt': {'stop_id': list(important_stops)},
-                'stop_times.txt': {
-                    'trip_id': important_stop_times['trip_id'].unique(),
-                    'stop_id': list(important_stops)
-                }
-            }
-            
-            ptg.extract_feed(feed_path_str, important_output, view_important)
-            important_feed = ptg.load_feed(important_output)
-        else:
-            important_feed = full_feed
-            os.replace(full_output, important_output)
-        
-        return {
-            'full': {
-                'feed': full_feed,
-                'view': view_full,
-                'path': full_output
-            },
-            'important': {
-                'feed': important_feed,
-                'view': view_important if only_important_stops else view_full,
-                'path': important_output
-            },
-            'stops': {
-                'junction': junction_stops,
-                'terminal': terminal_stops,
-                'target': set(target_stops)
-            }
+    # Create view dict efficiently
+    view = {
+        'trips.txt': {'trip_id': frequent_trips},
+        'stops.txt': {'stop_id': stop_times['stop_id'].unique()},
+        'stop_times.txt': {
+            'trip_id': frequent_trips,
+            'stop_id': stop_times['stop_id'].unique()
         }
-            
-    finally:
-        # Clean up temporary files if needed
-        if os.path.exists(full_output) and only_important_stops:
-            os.remove(full_output)
-
+    }
+    
+    # Extract feed directly to final output
+    ptg.extract_feed(feed_path if isinstance(feed_path, str) else CURRENT_GTFS_PATH, 
+                    output_path, view)
+    
+    return {
+        'full': {
+            'feed': ptg.load_feed(output_path),
+            'view': view,
+            'path': output_path
+        },
+        'stops': {
+            'junction': set(),  # Skip expensive junction detection
+            'terminal': set(),  # Skip terminal detection
+            'target': target_stops
+        }
+    }
 
 def find_true_junctions(feed, similarity_threshold=0.8):
     """Find true junction stops by analyzing route patterns through sequential stops."""

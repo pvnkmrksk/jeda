@@ -35,6 +35,16 @@ usage() {
     exit 1
 }
 
+# Function to check if processing is needed (move this up, before first usage)
+need_processing() {
+    local output_file="$1"
+    if [ "$FORCE_REBUILD" = true ] || [ ! -f "$output_file" ]; then
+        return 0  # true, processing needed
+    else
+        return 1  # false, processing not needed
+    fi
+}
+
 # Parse command-line arguments
 while getopts "g:t:c:o:m:p:xl:irsd:f" opt; do
     case $opt in
@@ -171,15 +181,6 @@ BASE_COLORED="${BASE_FILENAME}_base_colored.json"
 BASE_LOOMED="${BASE_FILENAME}_base_loomed.json"
 SCHEMATIC_OCTI="${BASE_FILENAME}_schematic_octi.json"
 
-# Function to check if processing is needed
-need_processing() {
-    local output_file="$1"
-    if [ "$FORCE_REBUILD" = true ] || [ ! -f "$output_file" ]; then
-        return 0  # true, processing needed
-    else
-        return 1  # false, processing not needed
-    fi
-}
 
 # Run base pipeline with checks for each step
 echo "Running preprocessing pipeline..."
@@ -202,12 +203,14 @@ fi
 if need_processing "$BASE_LOOMED"; then
     echo "Running loom processing..."
     cat "$BASE_COLORED" | eval "$loom_cmd > \"$BASE_LOOMED\""
+    # Add a copy with fixed name for prototyping
+    cp "$BASE_LOOMED" "${OUTPUT_DIR}/baseloomed.json"
 fi
 
 # Generate geographic map
 echo "Generating geographic map..."
 if need_processing "$FINAL_MAP_GEOGRAPHIC"; then
-    cat "$BASE_LOOMED" | transitmap -l --station-label-textsize 100 > "$FINAL_MAP_GEOGRAPHIC"
+    cat "$BASE_LOOMED" | transitmap -l --station-label-textsize 80 --> "$FINAL_MAP_GEOGRAPHIC"
 fi
 
 # Generate schematic map
@@ -217,7 +220,7 @@ if need_processing "$SCHEMATIC_OCTI"; then
 fi
 
 if need_processing "$FINAL_MAP_SCHEMATIC"; then
-    cat "$SCHEMATIC_OCTI" | transitmap -l --station-label-textsize 100 > "$FINAL_MAP_SCHEMATIC"
+    cat "$SCHEMATIC_OCTI" | transitmap -l --station-label-textsize 80 > "$FINAL_MAP_SCHEMATIC"
 fi
 
 # Add SVG and PDF files to the need_processing check
