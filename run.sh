@@ -14,9 +14,11 @@ DIRECTION=0
 SKIP_DIRECTION=false
 # Define the list of stop IDs you want to process
 STOP_IDS=("5wx" "32p")
+# Add force flag to default variables section
+FORCE_REBUILD=false
 # Function to display usage
 usage() {
-    echo "Usage: $0 [-g gtfs_file] [-c csv_file] [-o output_dir] [-m min_trips] [-p output_file_prefix] [-x] [-l colormap] [-i] [-r] [-d direction] [-s]"
+    echo "Usage: $0 [-g gtfs_file] [-c csv_file] [-o output_dir] [-m min_trips] [-p output_file_prefix] [-x] [-l colormap] [-i] [-r] [-d direction] [-s] [-f]"
     echo "  -g  GTFS file (default: $GTFS_FILE)"
     echo "  -t  Stop IDs (space-separated list, default: ${STOP_IDS[*]})"
     echo "  -c  CSV file (default: $CSV_FILE)"
@@ -29,11 +31,12 @@ usage() {
     echo "  -r  Hide routes (default: disabled)"
     echo "  -d  Direction (0 for down, 1 for up, default: $DIRECTION)"
     echo "  -s  Skip direction filter (default: disabled)"
+    echo "  -f  Force rebuild all steps (default: disabled)"
     exit 1
 }
 
 # Parse command-line arguments
-while getopts "g:t:c:o:m:p:xl:irsd:" opt; do
+while getopts "g:t:c:o:m:p:xl:irsd:f" opt; do
     case $opt in
         g) GTFS_FILE="$OPTARG" ;;
         t) IFS=' ' read -r -a STOP_IDS <<< "$OPTARG" ;;
@@ -47,6 +50,7 @@ while getopts "g:t:c:o:m:p:xl:irsd:" opt; do
         r) HIDE_ROUTES=true ;;
         d) DIRECTION="$OPTARG" ;;
         s) SKIP_DIRECTION=true ;;
+        f) FORCE_REBUILD=true ;;
         *) usage ;;
     esac
 done
@@ -105,7 +109,7 @@ for name in "${stop_names[@]}"; do
 done
 
 # Create base filename without extension
-BASE_FILENAME="${OUTPUT_DIR}/${OUTPUT_FILE_PREFIX}_${stop_ids_string}_${sanitized_stop_names}"
+BASE_FILENAME="${OUTPUT_DIR}/${OUTPUT_FILE_PREFIX}_${stop_ids_string}_m${MIN_TRIPS}_${sanitized_stop_names}"
 
 # Define the output file names
 OUTPUT_FILE="${BASE_FILENAME}.zip"
@@ -117,27 +121,37 @@ echo "Output will be saved to:"
 echo "  Geographic: $FINAL_MAP_GEOGRAPHIC"
 echo "  Schematic: $FINAL_MAP_SCHEMATIC"
 
-# Run the GTFS processing for all stop IDs at once, add viz_file name using final_map_file as template
-python gtfs_process_cli.py "$GTFS_FILE" "${STOP_IDS[@]}" \
-    --output-dir "$OUTPUT_DIR" \
-    --min-trips "$MIN_TRIPS" \
-    --output "${OUTPUT_FILE_PREFIX}_${stop_ids_string}_${sanitized_stop_names}.zip" \
-    $([ "$IMPORTANT_STOPS" = true ] && echo "--important-stops-only") \
-    $([ "$HIDE_ROUTES" = true ] && echo "--hide-routes") \
-    --direction "$DIRECTION" \
-    $([ "$SKIP_DIRECTION" = true ] && echo "--skip-direction-filter" ) \
-    --viz-file "${stop_ids_string}_${sanitized_stop_names}.html"
+# Before running GTFS processing, check if output file already exists
+if need_processing "$OUTPUT_FILE"; then
+    echo "Processing GTFS data for stop IDs: ${STOP_IDS[*]}"
+    echo "Output will be saved to:"
+    echo "  Geographic: $FINAL_MAP_GEOGRAPHIC"
+    echo "  Schematic: $FINAL_MAP_SCHEMATIC"
 
-# Check if the GTFS processing was successful
-if [ $? -ne 0 ]; then
-    echo "Error: GTFS processing failed. Please check the input file and parameters."
-    exit 1
-fi
+    # Run the GTFS processing for all stop IDs at once
+    python gtfs_process_cli.py "$GTFS_FILE" "${STOP_IDS[@]}" \
+        --output-dir "$OUTPUT_DIR" \
+        --min-trips "$MIN_TRIPS" \
+        --output "${OUTPUT_FILE_PREFIX}_${stop_ids_string}_m${MIN_TRIPS}_${sanitized_stop_names}.zip" \
+        $([ "$IMPORTANT_STOPS" = true ] && echo "--important-stops-only") \
+        $([ "$HIDE_ROUTES" = true ] && echo "--hide-routes") \
+        --direction "$DIRECTION" \
+        $([ "$SKIP_DIRECTION" = true ] && echo "--skip-direction-filter" ) \
+        --viz-file "${stop_ids_string}_m${MIN_TRIPS}_${sanitized_stop_names}.html"
 
-# Verify the output file was created (now checking in the correct directory)
-if [ ! -f "$OUTPUT_FILE" ]; then
-    echo "Error: Output file '$OUTPUT_FILE' was not created."
-    exit 1
+    # Check if the GTFS processing was successful
+    if [ $? -ne 0 ]; then
+        echo "Error: GTFS processing failed. Please check the input file and parameters."
+        exit 1
+    fi
+
+    # Verify the output file was created
+    if [ ! -f "$OUTPUT_FILE" ]; then
+        echo "Error: Output file '$OUTPUT_FILE' was not created."
+        exit 1
+    fi
+else
+    echo "Using existing GTFS subset file: $OUTPUT_FILE"
 fi
 
 # Run the subsequent commands
@@ -150,43 +164,101 @@ loom_cmd="loom --no-prune"
 TEMP_BASE="${OUTPUT_DIR}/transitmap_base.json"
 TEMP_OCTI="${OUTPUT_DIR}/transitmap_octi.json"
 
-# Run base pipeline
-echo "Running base preprocessing pipeline..."
-eval "$gtfs2graph_cmd | $topo_cmd | $color_geojson_cmd | $loom_cmd > \"$TEMP_BASE\""
+# Rename temp files to follow same naming convention
+BASE_GRAPH="${BASE_FILENAME}_base_graph.json"
+BASE_TOPO="${BASE_FILENAME}_base_topo.json"
+BASE_COLORED="${BASE_FILENAME}_base_colored.json"
+BASE_LOOMED="${BASE_FILENAME}_base_loomed.json"
+SCHEMATIC_OCTI="${BASE_FILENAME}_schematic_octi.json"
+
+# Function to check if processing is needed
+need_processing() {
+    local output_file="$1"
+    if [ "$FORCE_REBUILD" = true ] || [ ! -f "$output_file" ]; then
+        return 0  # true, processing needed
+    else
+        return 1  # false, processing not needed
+    fi
+}
+
+# Run base pipeline with checks for each step
+echo "Running preprocessing pipeline..."
+
+if need_processing "$BASE_GRAPH"; then
+    echo "Generating base graph..."
+    eval "$gtfs2graph_cmd > \"$BASE_GRAPH\""
+fi
+
+if need_processing "$BASE_TOPO"; then
+    echo "Running topology processing..."
+    cat "$BASE_GRAPH" | eval "$topo_cmd > \"$BASE_TOPO\""
+fi
+
+if need_processing "$BASE_COLORED"; then
+    echo "Applying colors..."
+    cat "$BASE_TOPO" | eval "$color_geojson_cmd > \"$BASE_COLORED\""
+fi
+
+if need_processing "$BASE_LOOMED"; then
+    echo "Running loom processing..."
+    cat "$BASE_COLORED" | eval "$loom_cmd > \"$BASE_LOOMED\""
+fi
 
 # Generate geographic map
 echo "Generating geographic map..."
+if need_processing "$FINAL_MAP_GEOGRAPHIC"; then
+    cat "$BASE_LOOMED" | transitmap -l --station-label-textsize 100 > "$FINAL_MAP_GEOGRAPHIC"
+fi
 
-cat "$TEMP_BASE" | transitmap -l --station-label-textsize 100 > "$FINAL_MAP_GEOGRAPHIC"
-
-# Generate schematic map with fresh pipeline
+# Generate schematic map
 echo "Generating schematic map..."
-# if [ "$OCTI_ENABLED" = true ]; then
-    # eval "$gtfs2graph_cmd | $topo_cmd | $color_geojson_cmd | octi | $loom_cmd > \"$TEMP_OCTI\""
-    # cat "$TEMP_OCTI" | transitmap -l --station-label-textsize 100 > "$FINAL_MAP_SCHEMATIC"
-# else
-cat "$TEMP_BASE" | octi | transitmap -l --station-label-textsize 100 > "$FINAL_MAP_SCHEMATIC"
-# fi
+if need_processing "$SCHEMATIC_OCTI"; then
+    cat "$BASE_LOOMED" | octi > "$SCHEMATIC_OCTI"
+fi
 
-# Check if both map generations were successful
+if need_processing "$FINAL_MAP_SCHEMATIC"; then
+    cat "$SCHEMATIC_OCTI" | transitmap -l --station-label-textsize 100 > "$FINAL_MAP_SCHEMATIC"
+fi
+
+# Add SVG and PDF files to the need_processing check
+FINAL_MAP_GEOGRAPHIC_ADJUSTED="${BASE_FILENAME}_geographic_adjusted.svg"
+FINAL_MAP_SCHEMATIC_ADJUSTED="${BASE_FILENAME}_schematic_adjusted.svg"
+FINAL_MAP_GEOGRAPHIC_PDF="${FINAL_MAP_GEOGRAPHIC%.svg}.pdf"
+FINAL_MAP_SCHEMATIC_PDF="${FINAL_MAP_SCHEMATIC%.svg}.pdf"
+
+# Replace the SVG adjustment and PDF conversion section with:
 if [ -f "$FINAL_MAP_GEOGRAPHIC" ] && [ -f "$FINAL_MAP_SCHEMATIC" ]; then
     echo "Successfully generated maps:"
     echo "  Geographic: $FINAL_MAP_GEOGRAPHIC"
     echo "  Schematic: $FINAL_MAP_SCHEMATIC"
 
     # Adjust SVG files
-    python3 "$OUTPUT_DIR/adjust_svg.py" "$FINAL_MAP_GEOGRAPHIC" "$FINAL_MAP_GEOGRAPHIC" 0.85
-    python3 "$OUTPUT_DIR/adjust_svg.py" "$FINAL_MAP_SCHEMATIC" "$FINAL_MAP_SCHEMATIC" 0.85
+    if need_processing "$FINAL_MAP_GEOGRAPHIC_ADJUSTED"; then
+        echo "Adjusting geographic SVG..."
+        python3 "$OUTPUT_DIR/adjust_svg.py" "$FINAL_MAP_GEOGRAPHIC" "$FINAL_MAP_GEOGRAPHIC_ADJUSTED" 0.85
+    fi
+
+    if need_processing "$FINAL_MAP_SCHEMATIC_ADJUSTED"; then
+        echo "Adjusting schematic SVG..."
+        python3 "$OUTPUT_DIR/adjust_svg.py" "$FINAL_MAP_SCHEMATIC" "$FINAL_MAP_SCHEMATIC_ADJUSTED" 0.85
+    fi
 
     # Convert SVG files to PDF
-    FINAL_MAP_GEOGRAPHIC_PDF="${FINAL_MAP_GEOGRAPHIC%.svg}.pdf"
-    FINAL_MAP_SCHEMATIC_PDF="${FINAL_MAP_SCHEMATIC%.svg}.pdf"
+    if need_processing "$FINAL_MAP_GEOGRAPHIC_PDF"; then
+        echo "Converting geographic SVG to PDF..."
+        /Applications/Inkscape.app/Contents/MacOS/inkscape --export-filename="$FINAL_MAP_GEOGRAPHIC_PDF" \
+            --export-type=pdf "$FINAL_MAP_GEOGRAPHIC_ADJUSTED"
+    fi
 
-    echo "Converting SVG files to PDF..."
-    /Applications/Inkscape.app/Contents/MacOS/inkscape --export-filename="$FINAL_MAP_GEOGRAPHIC_PDF" --export-type=pdf "$FINAL_MAP_GEOGRAPHIC"
-    /Applications/Inkscape.app/Contents/MacOS/inkscape --export-filename="$FINAL_MAP_SCHEMATIC_PDF" --export-type=pdf "$FINAL_MAP_SCHEMATIC"
+    if need_processing "$FINAL_MAP_SCHEMATIC_PDF"; then
+        echo "Converting schematic SVG to PDF..."
+        /Applications/Inkscape.app/Contents/MacOS/inkscape --export-filename="$FINAL_MAP_SCHEMATIC_PDF" \
+            --export-type=pdf "$FINAL_MAP_SCHEMATIC_ADJUSTED"
+    fi
 
-    echo "PDF files generated:"
+    echo "Files generated:"
+    echo "  Geographic SVG: $FINAL_MAP_GEOGRAPHIC_ADJUSTED"
+    echo "  Schematic SVG: $FINAL_MAP_SCHEMATIC_ADJUSTED"
     echo "  Geographic PDF: $FINAL_MAP_GEOGRAPHIC_PDF"
     echo "  Schematic PDF: $FINAL_MAP_SCHEMATIC_PDF"
 else
