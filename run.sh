@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Default values for variables
-GTFS_FILE="bmtc-2.zip"
+GTFS_FILE="subset_by_pattern.zip"
 CSV_FILE="stop_trip_counts.csv"
 OUTPUT_DIR="output"
 MIN_TRIPS=5
@@ -13,7 +13,7 @@ HIDE_ROUTES=false
 DIRECTION=0
 SKIP_DIRECTION=false
 # Define the list of stop IDs you want to process
-STOP_IDS=("5wx" "32p")
+STOP_IDS=("")
 # Add force flag to default variables section
 FORCE_REBUILD=false
 # Add to the default variables section at the top
@@ -86,19 +86,33 @@ stop_names=()
 
 echo "Starting GTFS processing..."
 
-# Iterate over each stop ID to find corresponding stop names
-for stop_id in "${STOP_IDS[@]}"; do
-    # Use awk to find the stop_name corresponding to the stop_id
-    stop_name=$(awk -F, -v id="$stop_id" '$4 == id {print $2}' "$CSV_FILE")
+# Only process stop names if we actually have stop IDs
+sanitized_stop_names=""
+stop_ids_string=""
+if [ ${#STOP_IDS[@]} -gt 0 ] && [ -n "${STOP_IDS[0]}" ]; then
+    stop_ids_string=$(IFS=_ ; echo "${STOP_IDS[*]}")  # Join stop IDs with underscore
     
-    # Add the stop name to the array if found
-    if [ -n "$stop_name" ]; then
-        stop_names+=("$stop_name")
-        echo "Found stop name for ID $stop_id: $stop_name"
-    else
-        echo "Warning: Stop ID $stop_id not found in CSV."
-    fi
-done
+    # Only process stop names if we have actual stop IDs
+    for stop_id in "${STOP_IDS[@]}"; do
+        stop_name=$(awk -F, -v id="$stop_id" '$4 == id {print $2}' "$CSV_FILE")
+        if [ -n "$stop_name" ]; then
+            stop_names+=("$stop_name")
+            echo "Found stop name for ID $stop_id: $stop_name"
+        else
+            echo "Warning: Stop ID $stop_id not found in CSV."
+        fi
+    done
+
+    # Create sanitized stop names only if we have actual stops
+    for name in "${stop_names[@]}"; do
+        sanitized_name=$(sanitize_filename "$name" | cut -c1-15)  # Limit each name to 15 chars
+        if [ -n "$sanitized_stop_names" ]; then
+            sanitized_stop_names="${sanitized_stop_names}_${sanitized_name}"
+        else
+            sanitized_stop_names="$sanitized_name"
+        fi
+    done
+fi
 
 # Function to sanitize filenames and limit length
 sanitize_filename() {
@@ -108,23 +122,21 @@ sanitize_filename() {
     echo "${sanitized:0:30}"
 }
 
-# Join all stop names with underscores for the filename, with total length limit
-sanitized_stop_names=""
-stop_ids_string=$(IFS=_ ; echo "${STOP_IDS[*]}")  # Join stop IDs with underscore
-max_total_length=50  # Reduced length limit for better compatibility
-
-# Create a shorter version of stop names
-for name in "${stop_names[@]}"; do
-    sanitized_name=$(sanitize_filename "$name" | cut -c1-15)  # Limit each name to 15 chars
+# Modify the filename construction section
+BASE_FILENAME="${OUTPUT_DIR}/${OUTPUT_FILE_PREFIX}"
+if [ -n "$stop_ids_string" ]; then  # Only add stop IDs if we actually have them
+    BASE_FILENAME="${BASE_FILENAME}_${stop_ids_string}"
     if [ -n "$sanitized_stop_names" ]; then
-        sanitized_stop_names="${sanitized_stop_names}_${sanitized_name}"
-    else
-        sanitized_stop_names="$sanitized_name"
+        BASE_FILENAME="${BASE_FILENAME}_${sanitized_stop_names}"
     fi
-done
+fi
 
-# Create base filename without extension
-BASE_FILENAME="${OUTPUT_DIR}/${OUTPUT_FILE_PREFIX}_${stop_ids_string}_m${MIN_TRIPS}_${sanitized_stop_names}"
+if [ ${#ROUTE_IDS[@]} -gt 0 ]; then
+    route_ids_string=$(IFS=_ ; echo "${ROUTE_IDS[*]}")
+    BASE_FILENAME="${BASE_FILENAME}_${route_ids_string}"
+fi
+
+BASE_FILENAME="${BASE_FILENAME}_m${MIN_TRIPS}"
 
 # Define the output file names
 OUTPUT_FILE="${BASE_FILENAME}.zip"
@@ -138,23 +150,32 @@ echo "  Schematic: $FINAL_MAP_SCHEMATIC"
 
 # Before running GTFS processing, check if output file already exists
 if need_processing "$OUTPUT_FILE"; then
-    echo "Processing GTFS data for stop IDs: ${STOP_IDS[*]}"
-    echo "Output will be saved to:"
-    echo "  Geographic: $FINAL_MAP_GEOGRAPHIC"
-    echo "  Schematic: $FINAL_MAP_SCHEMATIC"
-
-    # Run the GTFS processing for all stop IDs at once
-    python gtfs_process_cli.py "$GTFS_FILE" \
-        "${OUTPUT_FILE}" \
-        $([ ${#STOP_IDS[@]} -gt 0 ] && echo "--target-stops ${STOP_IDS[@]}") \
-        $([ ${#ROUTE_IDS[@]} -gt 0 ] && echo "--target-routes ${ROUTE_IDS[@]}") \
+    echo "Processing GTFS data..."
+    if [ -n "$stop_ids_string" ]; then
+        echo "Processing for stop IDs: ${STOP_IDS[*]}"
+    else
+        echo "Processing entire GTFS file"
+    fi
+    
+    # Capture the output of the Python script
+    PYTHON_OUTPUT=$(python gtfs_process_cli.py \
+        --input-gtfs "$GTFS_FILE" \
         --output-dir "$OUTPUT_DIR" \
         --min-trips "$MIN_TRIPS" \
-        --viz-file "${stop_ids_string}_m${MIN_TRIPS}_${sanitized_stop_names}.html"
-
-    # Check if the GTFS processing was successful
-    if [ $? -ne 0 ]; then
-        echo "Error: GTFS processing failed. Please check the input file and parameters."
+        --viz-file "stops_map.html" \
+        $([ -n "$stop_ids_string" ] && echo "--target-stops ${STOP_IDS[@]}") \
+        $([ ${#ROUTE_IDS[@]} -gt 0 ] && echo "--target-routes ${ROUTE_IDS[@]}")
+    )
+    
+    # Extract the actual output file path from the Python output
+    ACTUAL_OUTPUT=$(echo "$PYTHON_OUTPUT" | grep "OUTPUT_FILE=" | cut -d'=' -f2)
+    
+    if [ -f "$ACTUAL_OUTPUT" ]; then
+        mv "$ACTUAL_OUTPUT" "$OUTPUT_FILE"
+    else
+        echo "Error: Expected output file '$ACTUAL_OUTPUT' was not created."
+        echo "Python script output:"
+        echo "$PYTHON_OUTPUT"
         exit 1
     fi
 
@@ -187,6 +208,8 @@ SCHEMATIC_OCTI="${BASE_FILENAME}_schematic_octi.json"
 
 # Run base pipeline with checks for each step
 echo "Running preprocessing pipeline..."
+#print the command
+echo "$gtfs2graph_cmd"
 
 if need_processing "$BASE_GRAPH"; then
     echo "Generating base graph..."
