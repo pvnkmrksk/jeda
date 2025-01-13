@@ -16,11 +16,15 @@ SKIP_DIRECTION=false
 STOP_IDS=("5wx" "32p")
 # Add force flag to default variables section
 FORCE_REBUILD=false
+# Add to the default variables section at the top
+ROUTE_IDS=()  # Empty by default
+
 # Function to display usage
 usage() {
     echo "Usage: $0 [-g gtfs_file] [-c csv_file] [-o output_dir] [-m min_trips] [-p output_file_prefix] [-x] [-l colormap] [-i] [-r] [-d direction] [-s] [-f]"
     echo "  -g  GTFS file (default: $GTFS_FILE)"
     echo "  -t  Stop IDs (space-separated list, default: ${STOP_IDS[*]})"
+    echo "  -R  Route patterns (space-separated list, supports wildcards e.g., '314*')"
     echo "  -c  CSV file (default: $CSV_FILE)"
     echo "  -o  Output directory (default: $OUTPUT_DIR)"
     echo "  -m  Minimum trips (default: $MIN_TRIPS)"
@@ -46,10 +50,11 @@ need_processing() {
 }
 
 # Parse command-line arguments
-while getopts "g:t:c:o:m:p:xl:irsd:f" opt; do
+while getopts "g:t:R:c:o:m:p:xl:irsd:f" opt; do
     case $opt in
         g) GTFS_FILE="$OPTARG" ;;
         t) IFS=' ' read -r -a STOP_IDS <<< "$OPTARG" ;;
+        R) IFS=' ' read -r -a ROUTE_IDS <<< "$OPTARG" ;;
         c) CSV_FILE="$OPTARG" ;;
         o) OUTPUT_DIR="$OPTARG" ;;
         m) MIN_TRIPS="$OPTARG" ;;
@@ -139,7 +144,10 @@ if need_processing "$OUTPUT_FILE"; then
     echo "  Schematic: $FINAL_MAP_SCHEMATIC"
 
     # Run the GTFS processing for all stop IDs at once
-    python gtfs_process_cli.py "$GTFS_FILE" "${STOP_IDS[@]}" \
+    python gtfs_process_cli.py "$GTFS_FILE" \
+        "${OUTPUT_FILE}" \
+        $([ ${#STOP_IDS[@]} -gt 0 ] && echo "--target-stops ${STOP_IDS[@]}") \
+        $([ ${#ROUTE_IDS[@]} -gt 0 ] && echo "--target-routes ${ROUTE_IDS[@]}") \
         --output-dir "$OUTPUT_DIR" \
         --min-trips "$MIN_TRIPS" \
         --viz-file "${stop_ids_string}_m${MIN_TRIPS}_${sanitized_stop_names}.html"

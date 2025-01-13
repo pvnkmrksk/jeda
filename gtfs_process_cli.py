@@ -2,11 +2,9 @@
 
 import argparse
 import os
-import sys
 from pathlib import Path
 import partridge as ptg
 import folium
-import numpy as np
 
 
 def create_gtfs_subset(feed_path: str, target_stop_ids: list, output_path: str, min_daily_trips: int = 5):
@@ -71,6 +69,15 @@ def visualize_stops(feed_path: str, target_stop_ids: list, output_path: str, zoo
     print(f"Map visualization saved to: {output_path}")
 
 
+def warn_deprecated_flags(**flags):
+    """
+    Issue warnings for deprecated or unused flags.
+    """
+    for flag, value in flags.items():
+        if value is not None:
+            print(f"Warning: The flag '--{flag.replace('_', '-')}' is deprecated and has no effect.", flush=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description='GTFS Subset and Visualization Tool')
     parser.add_argument('input_gtfs', help='Path to input GTFS zip file')
@@ -79,7 +86,23 @@ def main():
     parser.add_argument('--min-trips', type=int, default=5, help='Minimum daily trips for route inclusion')
     parser.add_argument('--viz-file', default='stops_map.html', help='Output HTML file for visualization')
 
+    # Deprecated/unused flags
+    parser.add_argument('--important-stops-only', action='store_true', help='(Deprecated) Only include junction and terminal stops')
+    parser.add_argument('--hide-routes', action='store_true', help='(Deprecated) Disable route visualization')
+    parser.add_argument('--direction', type=int, default=None, help='(Deprecated) Direction flag (0 for down, 1 for up)')
+    parser.add_argument('--skip-direction-filter', action='store_true', help='(Deprecated) Skip direction filtering')
+    parser.add_argument('--advanced-processing', action='store_true', help='(Deprecated) Enable advanced stop processing features')
+
     args = parser.parse_args()
+
+    # Warn about deprecated flags
+    warn_deprecated_flags(
+        important_stops_only=args.important_stops_only,
+        hide_routes=args.hide_routes,
+        direction=args.direction,
+        skip_direction_filter=args.skip_direction_filter,
+        advanced_processing=args.advanced_processing
+    )
 
     # Prepare paths
     output_dir = Path(args.output_dir)
@@ -89,7 +112,7 @@ def main():
 
     # Process GTFS
     create_gtfs_subset(args.input_gtfs, args.target_stops, str(subset_path), args.min_trips)
-    # visualize_stops(str(subset_path), args.target_stops, str(viz_path))
+    visualize_stops(str(subset_path), args.target_stops, str(viz_path))
 
 
 if __name__ == "__main__":
