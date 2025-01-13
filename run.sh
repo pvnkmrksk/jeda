@@ -142,11 +142,6 @@ if need_processing "$OUTPUT_FILE"; then
     python gtfs_process_cli.py "$GTFS_FILE" "${STOP_IDS[@]}" \
         --output-dir "$OUTPUT_DIR" \
         --min-trips "$MIN_TRIPS" \
-        --output "${OUTPUT_FILE_PREFIX}_${stop_ids_string}_m${MIN_TRIPS}_${sanitized_stop_names}.zip" \
-        $([ "$IMPORTANT_STOPS" = true ] && echo "--important-stops-only") \
-        $([ "$HIDE_ROUTES" = true ] && echo "--hide-routes") \
-        --direction "$DIRECTION" \
-        $([ "$SKIP_DIRECTION" = true ] && echo "--skip-direction-filter" ) \
         --viz-file "${stop_ids_string}_m${MIN_TRIPS}_${sanitized_stop_names}.html"
 
     # Check if the GTFS processing was successful
