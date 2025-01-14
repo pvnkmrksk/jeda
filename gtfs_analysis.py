@@ -1,14 +1,36 @@
 import partridge as ptg
 import pandas as pd
-import re
 from typing import List, Set, Dict, Union
 from pathlib import Path
-from datetime import datetime
-import argparse
 
 class GTFSAnalyzer:
     """
-    A class to analyze GTFS feeds with various metrics and subsetting capabilities
+    A class to analyze GTFS feeds with various metrics and subsetting capabilities.
+
+    Example usage:
+        # Basic usage
+        analyzer = GTFSAnalyzer("input.zip")
+        
+        # Analyze stops and routes
+        metrics = analyzer.analyze_stop_metrics("analysis_output")
+        
+        # Create subsets
+        # Get routes with at least 10 trips
+        subset = analyzer.create_subset("output.zip", min_trips=10)
+        
+        # Get specific stops and their routes
+        subset = analyzer.create_subset("output.zip", stop_ids=["STOP1", "STOP2"])
+        
+        # Get specific routes (supports wildcards)
+        subset = analyzer.create_subset("output.zip", route_patterns=["138*", "KBS*"])
+        
+        # Combine filters
+        subset = analyzer.create_subset(
+            "output.zip",
+            stop_ids=["STOP1", "STOP2"],
+            route_patterns=["138*"],
+            min_trips=10
+        )
     """
     
     def __init__(self, feed_path: Union[str, Path]):
@@ -28,106 +50,46 @@ class GTFSAnalyzer:
         # Create output directory if it doesn't exist
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         
-        results = {}
-        
-        # 1. Stops with most trips
-        stop_trip_counts = (
-            self.feed.stop_times
-            .groupby('stop_id')['trip_id']
-            .nunique()
-            .reset_index(name='trip_count')
-            .merge(self.feed.stops[['stop_id', 'stop_name']], on='stop_id')
-            .sort_values('trip_count', ascending=False)
-        )
-        results['stops_by_trips'] = stop_trip_counts
-        
-        # 2. Stops with most unique routes
-        stop_route_counts = (
-            self.feed.stop_times
-            .merge(self.feed.trips[['trip_id', 'route_id']], on='trip_id')
-            .groupby('stop_id')['route_id']
-            .nunique()
-            .reset_index(name='route_count')
-            .merge(self.feed.stops[['stop_id', 'stop_name']], on='stop_id')
-            .sort_values('route_count', ascending=False)
-        )
-        results['stops_by_routes'] = stop_route_counts
-        
-        # 3. Routes with most trips
-        route_trip_counts = (
-            self.feed.trips
-            .groupby('route_id')
-            .size()
-            .reset_index(name='trip_count')
-            .merge(self.feed.routes[['route_id', 'route_short_name', 'route_long_name']], on='route_id')
-            .sort_values('trip_count', ascending=False)
-        )
-        results['routes_by_trips'] = route_trip_counts
+        results = {
+            'stops_by_trips': (
+                self.feed.stop_times
+                .groupby('stop_id')['trip_id']
+                .nunique()
+                .reset_index(name='trip_count')
+                .merge(self.feed.stops[['stop_id', 'stop_name']], on='stop_id')
+                .sort_values('trip_count', ascending=False)
+            ),
+            'stops_by_routes': (
+                self.feed.stop_times
+                .merge(self.feed.trips[['trip_id', 'route_id']], on='trip_id')
+                .groupby('stop_id')['route_id']
+                .nunique()
+                .reset_index(name='route_count')
+                .merge(self.feed.stops[['stop_id', 'stop_name']], on='stop_id')
+                .sort_values('route_count', ascending=False)
+            ),
+            'routes_by_trips': (
+                self.feed.trips
+                .groupby('route_id')
+                .size()
+                .reset_index(name='trip_count')
+                .merge(
+                    self.feed.routes[['route_id', 'route_short_name', 'route_long_name']], 
+                    on='route_id'
+                )
+                .sort_values('trip_count', ascending=False)
+            )
+        }
         
         # Save results to CSV
         for name, df in results.items():
             df.to_csv(f"{output_dir}/{name}.csv", index=False)
             
         return results
-    
-    def subset_by_stops(self, stop_ids: List[str], output_path: str) :
-        """
-        Create a GTFS subset containing only trips that serve specified stops
-        """
-        # Get all trips that serve these stops
-        trips_through_stops = (
-            self.feed.stop_times[self.feed.stop_times['stop_id'].isin(stop_ids)]
-            ['trip_id']
-            .unique()
-        )
-        
-        # Create view for partridge
-        view = {'trips.txt': {'trip_id': trips_through_stops}}
-        
-        # Extract subset
-        ptg.extract_feed(self.feed_path, output_path, view)
-        return ptg.load_feed(output_path)
-    
-    def subset_by_route_pattern(self, patterns: List[str], output_path: str):
-        """
-        Create a GTFS subset containing only routes matching any of the given patterns.
-        Patterns can be simple wildcards like "138*" or "KBS*".
-        """
-        # Convert wildcard patterns to a single regex pattern
-        regex_pattern = '|'.join([pattern.replace('*', '.*') for pattern in patterns])
-        
-        # Find matching route_ids
-        matching_routes = (
-            self.feed.routes[
-                self.feed.routes['route_short_name'].str.match(regex_pattern, na=False)
-            ]['route_id']
-            .unique()
-        )
-        
-        # Get all trips for matching routes
-        matching_trips = (
-            self.feed.trips[
-                self.feed.trips['route_id'].isin(matching_routes)
-            ]['trip_id']
-            .unique()
-        )
-        
-        # Create view for partridge
-        view = {'trips.txt': {'trip_id': matching_trips}}
-        
-        # Extract subset
-        ptg.extract_feed(self.feed_path, output_path, view)
-        return ptg.load_feed(output_path) 
-    
+
     def subset_by_min_trips(self, min_trips: int) -> Set[str]:
-        """
-        Get trips from routes that have at least min_trips trips in the static schedule
-        """
-        route_trip_counts = (
-            self.feed.trips
-            .groupby('route_id')
-            .size()
-        )
+        """Get trips from routes that have at least min_trips trips"""
+        route_trip_counts = self.feed.trips.groupby('route_id').size()
         qualifying_routes = route_trip_counts[route_trip_counts >= min_trips].index
         
         return set(
@@ -161,13 +123,13 @@ class GTFSAnalyzer:
         
         # First handle route patterns if specified
         if route_patterns and len(route_patterns) > 0:
-            regex_pattern = '|'.join([p.replace('*', '.*') for p in route_patterns])
-            route_trips = set(
+            qualifying_trips = set(
                 self.feed.trips[
                     self.feed.trips['route_id'].isin(
                         self.feed.routes[
                             self.feed.routes['route_short_name'].str.match(
-                                regex_pattern, na=False
+                                '|'.join(p.replace('*', '.*') for p in route_patterns),
+                                na=False
                             )
                         ]['route_id']
                     )
@@ -196,12 +158,12 @@ class GTFSAnalyzer:
         
         # Apply minimum trips filter if specified
         if min_trips:
-            min_trip_ids = self.subset_by_min_trips(min_trips)
-            qualifying_trips &= min_trip_ids
+            qualifying_trips &= self.subset_by_min_trips(min_trips)
             
-        # Create view for partridge
-        view = {'trips.txt': {'trip_id': list(qualifying_trips)}}
-        
-        # Extract subset
-        ptg.extract_feed(self.feed_path, output_path, view)
+        # Create and extract subset
+        ptg.extract_feed(
+            self.feed_path,
+            output_path,
+            {'trips.txt': {'trip_id': list(qualifying_trips)}}
+        )
         return GTFSAnalyzer(output_path)

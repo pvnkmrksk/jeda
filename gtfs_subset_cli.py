@@ -4,92 +4,70 @@ from gtfs_analysis import GTFSAnalyzer
 from gtfs_map_viewer import GTFSMapCreator
 from pathlib import Path
 
-def parse_list_arg(arg: str) -> list:
-    """Parse comma-separated string into list"""
-    return [item.strip() for item in arg.split(',')] if arg else None
+def create_subset(input_gtfs: str, *, 
+                 output: str = None,
+                 stops: str = None,
+                 routes: str = None,
+                 min_trips: int = None,
+                 map: bool = False,
+                 map_output: str = None,
+                 stops_only: bool = False,
+                 color_by: str = 'trips',
+                 cmap: str = 'magma',
+                 route_cmap: str = 'magma',
+                 **kwargs) -> Path:
+    """
+    Create a GTFS subset with optional map visualization.
+    Uses keyword-only arguments for clarity and safety.
 
-def generate_output_name(input_path: str, stops: list = None, 
-                        routes: list = None, min_trips: int = None) -> str:
-    """Generate a descriptive output filename based on applied filters"""
-    base = Path(input_path).stem
-    filters = []
-    
-    if stops:
-        filters.append(f"stops_{'-'.join(stops)}")
-    if routes:
-        filters.append(f"routes_{'-'.join(routes)}")
-    if min_trips:
-        filters.append(f"min{min_trips}")
+    Example usage:
+        # Basic subsetting
+        python gtfs_subset_cli.py input.zip -o output.zip
         
-    return f"{base}_{'_'.join(filters or ['full'])}.zip"
-
-def create_map(gtfs_path: str, map_output: str = None, stops_only: bool = False):
-    """Create an interactive map from the GTFS data"""
-    map_output = map_output or str(Path(gtfs_path).with_suffix('.html'))
-    map_creator = GTFSMapCreator(gtfs_path)
-    map_creator.load_gtfs_data()
-    map_creator.create_map(map_output, stops_only=stops_only)
-    print(f"Map created at: {map_output}")
-
-def main():
-    parser = argparse.ArgumentParser(
-        description='Create GTFS subsets based on various filters'
-    )
-    parser.add_argument(
-        'input_gtfs',
-        help='Path to input GTFS zip file'
-    )
-    parser.add_argument(
-        '-o', '--output',
-        help='Path where output GTFS zip will be saved (optional)'
-    )
-    parser.add_argument(
-        '-s', '--stops',
-        help='Comma-separated list of stop IDs to filter by'
-    )
-    parser.add_argument(
-        '-r', '--routes',
-        help='Comma-separated list of route patterns to filter by (supports wildcards)'
-    )
-    parser.add_argument(
-        '-m', '--min-trips',
-        type=int,
-        help='Minimum number of trips a route must have'
-    )
-    parser.add_argument(
-        '--map',
-        action='store_true',
-        help='Create an interactive HTML map of the subset'
-    )
-    parser.add_argument(
-        '--map-output',
-        help='Path for the output HTML map (default: {gtfs_name}.html)'
-    )
-    parser.add_argument(
-        '--stops-only',
-        action='store_true',
-        help='Show only stops on the map, no routes'
-    )
-
-    args = parser.parse_args()
+        # Filter by stops
+        python gtfs_subset_cli.py input.zip -s "STOP1,STOP2,STOP3"
+        
+        # Filter by routes (with wildcards)
+        python gtfs_subset_cli.py input.zip -r "138*,KBS*"
+        
+        # Filter by minimum trips
+        python gtfs_subset_cli.py input.zip -m 10
+        
+        # Combine filters and create map
+        python gtfs_subset_cli.py input.zip -s "STOP1,STOP2" -r "138*" -m 10 --map
+        
+        # Create map with custom coloring
+        python gtfs_subset_cli.py input.zip --map --color-by routes --cmap viridis --route-cmap plasma
+        
+        # Show only stops on map
+        python gtfs_subset_cli.py input.zip --map --stops-only
+    """
+    # Parse filters
+    stop_ids = [s.strip() for s in stops.split(',')] if stops else None
+    route_patterns = [r.strip() for r in routes.split(',')] if routes else None
     
-    # Parse arguments and create subset
-    stops = parse_list_arg(args.stops)
-    routes = parse_list_arg(args.routes)
-    output_path = args.output or generate_output_name(
-        args.input_gtfs, stops, routes, args.min_trips
-    )
-
-    analyzer = GTFSAnalyzer(args.input_gtfs)
+    # Generate output name if not provided
+    if not output:
+        filters = []
+        if stop_ids:
+            filters.append(f"stops_{'-'.join(stop_ids)}")
+        if route_patterns:
+            filters.append(f"routes_{'-'.join(route_patterns)}")
+        if min_trips:
+            filters.append(f"min{min_trips}")
+        output = f"{Path(input_gtfs).stem}_{'_'.join(filters or ['full'])}.zip"
+    
+    # Create subset
+    analyzer = GTFSAnalyzer(input_gtfs)
     subset = analyzer.create_subset(
-        output_path=output_path,
-        stop_ids=stops,
-        route_patterns=routes,
-        min_trips=args.min_trips
+        output_path=output,
+        stop_ids=stop_ids,
+        route_patterns=route_patterns,
+        min_trips=min_trips
     )
     
     # Print statistics
-    print(f"\nOutput GTFS: {output_path}")
+    print(f"\nOutput GTFS: {output}")
     print(f"\nSubset Statistics:")
     print(f"Original routes: {len(analyzer.feed.routes)}")
     print(f"Subset routes: {len(subset.feed.routes)}")
@@ -98,8 +76,44 @@ def main():
     print(f"Original stops: {len(analyzer.feed.stops)}")
     print(f"Subset stops: {len(subset.feed.stops)}")
     
-    if args.map:
-        create_map(output_path, args.map_output, args.stops_only)
+    # Create map if requested
+    if map:
+        map_path = map_output or str(Path(output).with_suffix('.html'))
+        map_creator = GTFSMapCreator(output)
+        map_creator.load_gtfs_data()
+        map_creator.create_map(
+            output_path=map_path,
+            stops_only=stops_only,
+            color_by=color_by,
+            cmap=cmap,
+            route_cmap=route_cmap,
+            **kwargs
+        )
+        print(f"Map created at: {map_path}")
+    
+    return Path(output)
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Create GTFS subsets based on various filters'
+    )
+    parser.add_argument('input_gtfs', help='Path to input GTFS zip file')
+    parser.add_argument('-o', '--output', help='Output GTFS path')
+    parser.add_argument('-s', '--stops', help='Comma-separated stop IDs')
+    parser.add_argument('-r', '--routes', help='Comma-separated route patterns (wildcards supported)')
+    parser.add_argument('-m', '--min-trips', type=int, help='Minimum trips per route')
+    parser.add_argument('--map', action='store_true', help='Create HTML map')
+    parser.add_argument('--map-output', help='Map output path')
+    parser.add_argument('--stops-only', action='store_true', help='Show only stops on map')
+    parser.add_argument('--color-by', choices=['trips', 'routes'], default='trips',
+                      help='Metric to use for coloring stops')
+    parser.add_argument('--cmap', default='magma',
+                      help='Matplotlib colormap name for stops')
+    parser.add_argument('--route-cmap', default='magma',
+                      help='Matplotlib colormap name for routes')
+
+    args = parser.parse_args()
+    create_subset(**vars(args))
 
 if __name__ == '__main__':
     main()
