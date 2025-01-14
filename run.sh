@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Default values for variables
-GTFS_FILE="subset_by_pattern.zip"
+GTFS_FILE="bmtc-2.zip"
 CSV_FILE="stop_trip_counts.csv"
 OUTPUT_DIR="output"
 MIN_TRIPS=5

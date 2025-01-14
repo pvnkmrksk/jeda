@@ -3,6 +3,8 @@ import pandas as pd
 import re
 from typing import List, Set, Dict, Union
 from pathlib import Path
+from datetime import datetime
+import argparse
 
 class GTFSAnalyzer:
     """
@@ -116,3 +118,90 @@ class GTFSAnalyzer:
         # Extract subset
         ptg.extract_feed(self.feed_path, output_path, view)
         return ptg.load_feed(output_path) 
+    
+    def subset_by_min_trips(self, min_trips: int) -> Set[str]:
+        """
+        Get trips from routes that have at least min_trips trips in the static schedule
+        """
+        route_trip_counts = (
+            self.feed.trips
+            .groupby('route_id')
+            .size()
+        )
+        qualifying_routes = route_trip_counts[route_trip_counts >= min_trips].index
+        
+        return set(
+            self.feed.trips[
+                self.feed.trips['route_id'].isin(qualifying_routes)
+            ]['trip_id']
+        )
+
+    def create_subset(self, 
+                     output_path: str,
+                     stop_ids: List[str] = None,
+                     route_patterns: List[str] = None,
+                     min_trips: int = None) -> 'GTFSAnalyzer':
+        """
+        Create a GTFS subset by chaining multiple filters.
+        Returns a new GTFSAnalyzer instance with the subset feed.
+        
+        Parameters:
+        -----------
+        output_path : str
+            Path where the subset GTFS will be saved
+        stop_ids : List[str], optional
+            List of stop IDs to include. If provided without routes, includes all routes serving these stops.
+        route_patterns : List[str], optional
+            List of route patterns (supports wildcards like "138*"). If provided without stops, 
+            includes only stops served by these routes.
+        min_trips : int, optional
+            Minimum number of trips a route must have to be included
+        """
+        qualifying_trips = set()
+        
+        # First handle route patterns if specified
+        if route_patterns and len(route_patterns) > 0:
+            regex_pattern = '|'.join([p.replace('*', '.*') for p in route_patterns])
+            route_trips = set(
+                self.feed.trips[
+                    self.feed.trips['route_id'].isin(
+                        self.feed.routes[
+                            self.feed.routes['route_short_name'].str.match(
+                                regex_pattern, na=False
+                            )
+                        ]['route_id']
+                    )
+                ]['trip_id']
+            )
+            qualifying_trips = route_trips
+        
+        # Then handle stops if specified
+        if stop_ids and len(stop_ids) > 0:
+            stop_trips = set(
+                self.feed.stop_times[
+                    self.feed.stop_times['stop_id'].isin(stop_ids)
+                ]['trip_id']
+            )
+            # If routes were specified, intersect with stop_trips
+            # If no routes were specified, use all trips through these stops
+            qualifying_trips = (
+                qualifying_trips & stop_trips 
+                if qualifying_trips 
+                else stop_trips
+            )
+        
+        # If neither stops nor routes specified, use all trips
+        if not qualifying_trips:
+            qualifying_trips = set(self.feed.trips['trip_id'])
+        
+        # Apply minimum trips filter if specified
+        if min_trips:
+            min_trip_ids = self.subset_by_min_trips(min_trips)
+            qualifying_trips &= min_trip_ids
+            
+        # Create view for partridge
+        view = {'trips.txt': {'trip_id': list(qualifying_trips)}}
+        
+        # Extract subset
+        ptg.extract_feed(self.feed_path, output_path, view)
+        return GTFSAnalyzer(output_path)
