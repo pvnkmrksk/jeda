@@ -4,9 +4,14 @@
 GTFS Analysis Tool
 ================
 
+Part of the Magga (ಮಗ್ಗ) project - A transit map generation toolkit.
+"Magga" means loom in Kannada, reflecting the weaving of intricate patterns,
+much like the organic patterns of transit routes in a city.
+
 A comprehensive tool for analyzing GTFS data, providing metrics and insights
-about transit networks. Supports data subsetting and route coloring. Part of
-the extended LOOM transit map toolkit.
+about transit networks. Supports data subsetting and route coloring.
+
+For more information, visit: https://github.com/pvnkmrksk/magga
 
 MIT License
 

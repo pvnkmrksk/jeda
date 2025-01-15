@@ -4,9 +4,20 @@
 GTFS Subset CLI Tool
 ===================
 
+Part of the Magga (ಮಗ್ಗ/मग्ग) project - A transit map generation toolkit.
+
+"Magga" carries dual meaning - a loom (ಮಗ್ಗ) in Kannada that weaves intricate
+patterns, and "path" (मग्ग) in Pali Buddhism, referring to the noble path to
+enlightenment. Much like how a loom weaves threads into beautiful patterns,
+public transit weaves paths through our cities. And just as the Noble Eightfold
+Path guides beings toward enlightenment, accessible public transit guides
+communities toward sustainability and equity - reducing emissions, connecting
+people to opportunities, and weaving the fabric of more livable cities.
+
 A command-line tool for creating filtered subsets of GTFS data based on various
-criteria such as specific stops, routes, or minimum trip counts. Part of the
-extended LOOM transit map toolkit.
+criteria such as specific stops, routes, or minimum trip counts.
+
+For more information, visit: https://github.com/pvnkmrksk/magga
 
 MIT License
 
@@ -142,22 +153,92 @@ def create_subset(input_gtfs: str, *,
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Create GTFS subsets based on various filters'
+        description='''
+Magga (ಮಗ್ಗ/मग्ग) GTFS Subset Generator
+====================================
+
+Drawing inspiration from both the Kannada word for loom (ಮಗ್ಗ) and the Pali word
+for path (मग्ग), this tool helps select and filter GTFS data to create focused
+transit maps. Just as a loom carefully selects threads for a pattern, and the
+Noble Path guides toward enlightenment, this tool helps illuminate the transit
+paths that connect communities to opportunities.
+
+Create filtered subsets of GTFS data based on various criteria such as stops,
+routes, or minimum trip counts. Optionally generate interactive visualizations
+of the resulting network.
+''',
+        formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument('input_gtfs', help='Path to input GTFS zip file')
-    parser.add_argument('-o', '--output', help='Output GTFS path')
-    parser.add_argument('-s', '--stops', help='Comma-separated stop IDs')
-    parser.add_argument('-r', '--routes', help='Comma-separated route patterns (wildcards supported)')
-    parser.add_argument('-m', '--min-trips', type=int, help='Minimum trips per route')
-    parser.add_argument('--map', action='store_true', help='Create HTML map')
-    parser.add_argument('--map-output', help='Map output path')
-    parser.add_argument('--stops-only', action='store_true', help='Show only stops on map')
-    parser.add_argument('--color-by', choices=['trips', 'routes'], default='trips',
-                      help='Metric to use for coloring stops')
-    parser.add_argument('--cmap', default='magma',
-                      help='Matplotlib colormap name for stops')
-    parser.add_argument('--route-cmap', default='tab20c',
-                      help='Matplotlib colormap name for routes (default: tab20c)')
+    
+    # Input/Output
+    parser.add_argument('input_gtfs', 
+                       help='Path to input GTFS zip file')
+    parser.add_argument('-o', '--output',
+                       help='Output path for filtered GTFS (default: auto-generated)')
+    
+    # Filtering Options
+    filter_group = parser.add_argument_group('filtering options')
+    filter_group.add_argument('-s', '--stops',
+                            help='Comma-separated stop IDs to include')
+    filter_group.add_argument('-r', '--routes',
+                            help='Route patterns to match (supports wildcards)')
+    filter_group.add_argument('-m', '--min-trips',
+                            type=int,
+                            help='Minimum trips per route')
+    
+    # Visualization Options
+    viz_group = parser.add_argument_group('visualization options')
+    viz_group.add_argument('--map',
+                          action='store_true',
+                          help='Generate interactive HTML map')
+    viz_group.add_argument('--map-output',
+                          help='Custom path for map output (default: input_name.html)')
+    viz_group.add_argument('--stops-only',
+                          action='store_true',
+                          help='Show only stops on map (no routes)')
+    viz_group.add_argument('--color-by',
+                          choices=['trips', 'routes'],
+                          default='trips',
+                          help='Metric for coloring stops (default: trips)')
+    
+    # Style Options
+    style_group = parser.add_argument_group('style options')
+    style_group.add_argument('--cmap',
+                            default='magma',
+                            help='Matplotlib colormap for stops (default: magma)')
+    style_group.add_argument('--route-cmap',
+                            default='tab20c',
+                            help='Matplotlib colormap for routes (default: tab20c)')
+
+    parser.epilog = '''
+examples:
+  # Basic subsetting
+  %(prog)s input.zip -o output.zip
+
+  # Filter by stops
+  %(prog)s input.zip -s "STOP1,STOP2,STOP3"
+
+  # Filter by routes with wildcards
+  %(prog)s input.zip -r "138*,KBS*"
+
+  # Filter by minimum trips
+  %(prog)s input.zip -m 10
+
+  # Generate map with custom coloring
+  %(prog)s input.zip --map --color-by routes --cmap viridis
+
+  # Complex filtering with visualization
+  %(prog)s input.zip -s "STOP1,STOP2" -r "138*" -m 10 --map
+
+notes:
+  - Route patterns support wildcards (e.g., "138*" matches "138A", "138B")
+  - Generated subsets preserve the organic flow of transit routes
+  - Colormaps can be chosen from matplotlib's collection
+  - Output includes both data and optional visualization
+
+For more information and documentation:
+  https://github.com/pvnkmrksk/magga
+'''
 
     args = parser.parse_args()
     create_subset(**vars(args))

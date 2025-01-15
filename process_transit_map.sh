@@ -4,6 +4,16 @@
 # Process Transit Map - Automated GTFS to Transit Map Pipeline
 # =============================================================================
 #
+# Part of the Magga (ಮಗ್ಗ/मग्ग) project - A transit map generation toolkit
+# 
+# "Magga" carries dual meaning - a loom (ಮಗ್ಗ) in Kannada that weaves intricate
+# patterns, and "path" (मग्ग) in Pali Buddhism, referring to the noble path to
+# enlightenment. Much like how a loom weaves threads into beautiful patterns,
+# public transit weaves paths through our cities. And just as the Noble Eightfold
+# Path guides beings toward enlightenment, accessible public transit guides
+# communities toward sustainability and equity - reducing emissions, connecting
+# people to opportunities, and weaving the fabric of more livable cities.
+#
 # MIT License
 #
 # Copyright (c) 2024 Pavan Kumar (@pvnkmrksk)
@@ -26,8 +36,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 #
-# This work builds upon the LOOM project (https://github.com/ad-freiburg/loom)
-# and is distributed under compatible terms.
+# This work builds upon the LOOM project and is distributed under compatible terms.
 #
 # Author: ಪವನ ಕುಮಾರ ​| Pavan Kumar, PhD (@pvnkmrksk)
 #
@@ -107,30 +116,78 @@ print_output_tree() {
     fi
 }
 
-# @description Print usage information
+# @description Print usage information and help text
 print_usage() {
-    echo "Usage: $0 <gtfs.zip> [options]"
-    echo
-    echo "Options:"
-    echo "  --stops, -s              : Comma-separated stop IDs"
-    echo "  --routes, -r             : Route number pattern"
-    echo "  --min-trips, -m          : Minimum trips per route (default: 15)"
-    echo "  --max-dist, -d           : Maximum aggregation distance in meters (default: 150)"
-    echo "  --smooth, -sm            : Smoothing value (default: 20)"
-    echo "  --output-dir, -o         : Output directory (default: output)"
-    echo "  --line-width, -w         : Line width (default: 20)"
-    echo "  --line-spacing, -sp      : Line spacing (default: 10)"
-    echo "  --outline-width, -ow     : Width of line outlines (default: 1)"
-    echo "  --station-label-size, -sl: Station label text size (default: 60)"
-    echo "  --line-label-size, -ll   : Line label text size (default: 40)"
-    echo "  --padding, -p            : Padding, -1 for auto (default: -1)"
-    echo "  --text-shrink, -ts       : Text shrink percentage (default: 0.85)"
-    echo "  --verbose, -v            : Enable debug mode with verbose output"
-    echo
-    echo "Example:"
-    echo "  $0 input.zip --stops \"stop1,stop2\" --routes \"1,2,3\" --min-trips 10"
+    cat << EOF
+Magga (ಮಗ್ಗ/मग्ग) Transit Map Generator
+====================================
+
+A tool to generate transit maps from GTFS data. Drawing inspiration from both
+the Kannada word for loom (ಮಗ್ಗ) and the Pali word for path (मग्ग), Magga weaves
+transit routes into beautiful, readable maps while illuminating the paths that
+guide communities toward sustainable and equitable mobility.
+
+Usage: 
+    $(basename "$0") <gtfs_file> [options]
+    $(basename "$0") -h | --help
+
+Arguments:
+    gtfs_file                   Input GTFS zip file
+
+Options:
+  Data Filtering:
+    -s, --stops <ids>          Comma-separated stop IDs to include
+    -r, --routes <patterns>    Route patterns to match (supports wildcards)
+    -m, --min-trips <num>      Minimum trips per route (default: 15)
+    -d, --max-dist <meters>    Maximum aggregation distance (default: 150)
+    -sm, --smooth <value>      Smoothing factor (default: 20)
+
+  Visual Styling:
+    -w, --line-width <px>      Line width (default: 20)
+    -sp, --line-spacing <px>   Space between parallel lines (default: 10)
+    -ow, --outline-width <px>  Width of line outlines (default: 1)
+    -sl, --station-label-size <px>
+                              Station label text size (default: 60)
+    -ll, --line-label-size <px>
+                              Line number text size (default: 40)
+    -p, --padding <value>      SVG padding, -1 for auto (default: -1)
+    -ts, --text-shrink <ratio> Text shrink ratio 0-1 (default: 0.85)
+
+  Output Control:
+    -o, --output-dir <path>    Output directory (default: output)
+    -v, --verbose             Enable detailed logging
+
+Examples:
+    # Basic usage with default settings
+    $(basename "$0") input.zip
+
+    # Filter specific stops and routes
+    $(basename "$0") input.zip -s "stop1,stop2" -r "1,2,3"
+
+    # Customize appearance
+    $(basename "$0") input.zip -w 25 -sl 70 -ts 0.8
+
+    # Complex filtering with custom output
+    $(basename "$0") input.zip -s "stop1,stop2" -r "138*" -m 10 -o maps/
+
+Notes:
+    - Route patterns support wildcards (e.g., "138*" matches "138A", "138B")
+    - Text shrink ratio should be between 0 and 1
+    - Use verbose mode (-v) for detailed processing information
+    - Output includes both geographic and schematic maps
+    - Generated maps preserve the organic flow of transit routes while
+      maintaining readability, much like patterns in traditional weaving
+
+For more information and documentation:
+    https://github.com/pvnkmrksk/magga
+EOF
     exit 1
 }
+
+# Check for help flag
+if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
+    print_usage
+fi
 
 # Default values
 STOPS=""

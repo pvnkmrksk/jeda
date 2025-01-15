@@ -4,9 +4,20 @@
 GTFS Map Viewer
 ==============
 
+Part of the Magga (ಮಗ್ಗ/मग्ग) project - A transit map generation toolkit.
+
+"Magga" carries dual meaning - a loom (ಮಗ್ಗ) in Kannada that weaves intricate
+patterns, and "path" (मग्ग) in Pali Buddhism, referring to the noble path to
+enlightenment. Much like how a loom weaves threads into beautiful patterns,
+public transit weaves paths through our cities. And just as the Noble Eightfold
+Path guides beings toward enlightenment, accessible public transit guides
+communities toward sustainability and equity - reducing emissions, connecting
+people to opportunities, and weaving the fabric of more livable cities.
+
 An interactive map visualization tool for GTFS data, providing customizable
-views of transit networks with route and stop information. Part of the
-extended LOOM transit map toolkit.
+views of transit networks with route and stop information.
+
+For more information, visit: https://github.com/pvnkmrksk/magga
 
 MIT License
 
@@ -290,28 +301,95 @@ class GTFSMapCreator:
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description='Create an interactive map from GTFS data')
-    parser.add_argument('gtfs_path', help='Path to the GTFS zip file')
-    parser.add_argument('--output', default='transit_map.html', help='Output HTML file path')
-    parser.add_argument('--stops-only', action='store_true', help='Show only stops, no routes')
-    parser.add_argument('--color-by', choices=['trips', 'routes'], default='trips',
-                      help='Metric to use for coloring stops')
-    parser.add_argument('--cmap', default='magma',
-                      help='Matplotlib colormap name for stops')
-    parser.add_argument('--route-cmap', default='magma',
-                      help='Matplotlib colormap name for routes')
+    parser = argparse.ArgumentParser(
+        description='''
+Magga (ಮಗ್ಗ/मग्ग) Map Viewer
+==========================
+
+Drawing inspiration from both the Kannada word for loom (ಮಗ್ಗ) and the Pali word
+for path (मग्ग), this tool weaves transit data into interactive, explorable maps
+that illuminate the paths toward sustainable and equitable mobility.
+
+Features:
+- Route visualization with frequency-based styling
+- Stop visualization with customizable metrics
+- Interactive popups with detailed information
+- Multiple color scheme options
+- Organic representation of transit patterns
+
+Part of the Magga transit map toolkit, which transforms GTFS data into
+beautiful, readable transit maps while preserving the natural flow of routes.
+''',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    
+    # Input/Output
+    parser.add_argument('gtfs_path',
+                       help='Path to the GTFS zip file')
+    parser.add_argument('-o', '--output',
+                       default='transit_map.html',
+                       help='Output HTML file path (default: transit_map.html)')
+    
+    # Display Options
+    display_group = parser.add_argument_group('display options')
+    display_group.add_argument('--stops-only',
+                             action='store_true',
+                             help='Show only stops, hide routes')
+    display_group.add_argument('--color-by',
+                             choices=['trips', 'routes'],
+                             default='trips',
+                             help='Metric for coloring stops (default: trips)')
+    
+    # Style Options
+    style_group = parser.add_argument_group('style options')
+    style_group.add_argument('--cmap',
+                            default='magma',
+                            metavar='COLORMAP',
+                            help='Matplotlib colormap for stops (default: magma)')
+    style_group.add_argument('--route-cmap',
+                            default='magma',
+                            metavar='COLORMAP',
+                            help='Matplotlib colormap for routes (default: magma)')
+
+    parser.epilog = '''
+examples:
+  # Basic map
+  %(prog)s input.zip
+
+  # Custom output path
+  %(prog)s input.zip -o map.html
+
+  # Show only stops
+  %(prog)s input.zip --stops-only
+
+  # Color by route count with custom scheme
+  %(prog)s input.zip --color-by routes --cmap YlOrRd
+
+  # Custom coloring for both stops and routes
+  %(prog)s input.zip --cmap viridis --route-cmap plasma
+
+notes:
+  - Interactive maps allow exploration of the transit network
+  - Stops are sized by importance (trip or route count)
+  - Routes are colored by frequency
+  - Popups provide detailed information about each stop
+  - Available colormaps: https://matplotlib.org/stable/tutorials/colors/colormaps.html
+
+For more information and documentation:
+  https://github.com/pvnkmrksk/magga
+'''
     
     args = parser.parse_args()
     
     if not os.path.exists(args.gtfs_path):
-        print(f"Error: Input file '{args.gtfs_path}' does not exist")
+        print(f"Error: Input file '{args.gtfs_path}' does not exist", file=sys.stderr)
         sys.exit(1)
     
     map_creator = GTFSMapCreator(args.gtfs_path)
     map_creator.load_gtfs_data()
     map_creator.create_map(**vars(args))
-
-    print(f"Map created successfully at {args.output}")
+    
+    print(f"Map created successfully at {args.output}", file=sys.stderr)
 
 if __name__ == "__main__":
     main() 
