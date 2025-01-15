@@ -192,13 +192,20 @@ class GTFSAnalyzer:
         
         # Then handle stops if specified
         if stop_ids and len(stop_ids) > 0:
+            # Get all trips that serve these stops
             stop_trips = set(
                 self.feed.stop_times[
                     self.feed.stop_times['stop_id'].isin(stop_ids)
                 ]['trip_id']
             )
             qualifying_trips.update(stop_trips)
-            stops_to_keep.update(stop_ids)
+            
+            # Get all stops served by these trips (not just the specified stops)
+            stops_to_keep.update(
+                self.feed.stop_times[
+                    self.feed.stop_times['trip_id'].isin(stop_trips)
+                ]['stop_id']
+            )
         
         # If neither stops nor routes specified, use all trips and stops
         if not qualifying_trips:
