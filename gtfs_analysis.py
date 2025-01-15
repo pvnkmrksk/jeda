@@ -2,6 +2,7 @@ import partridge as ptg
 import pandas as pd
 from typing import List, Set, Dict, Union
 from pathlib import Path
+import natsort
 
 class GTFSAnalyzer:
     """
@@ -135,7 +136,6 @@ class GTFSAnalyzer:
                     )
                 ]['trip_id']
             )
-            # qualifying_trips = qualifying_trips
         
         # Then handle stops if specified
         if stop_ids and len(stop_ids) > 0:
@@ -160,10 +160,109 @@ class GTFSAnalyzer:
         if min_trips:
             qualifying_trips &= self.subset_by_min_trips(min_trips)
             
-        # Create and extract subset
-        ptg.extract_feed(
-            self.feed_path,
-            output_path,
-            {'trips.txt': {'trip_id': list(qualifying_trips)}}
-        )
+        # Get routes to keep
+        routes_to_keep = set(self.feed.trips[
+            self.feed.trips['trip_id'].isin(qualifying_trips)
+        ]['route_id'])
+        
+        # Create a filtered routes DataFrame with colors
+        filtered_routes = self.feed.routes[
+            self.feed.routes['route_id'].isin(routes_to_keep)
+        ].copy()
+        
+        # Apply colors to only the filtered routes
+        color_mapping = self.apply_route_colors_to_df(filtered_routes)
+        
+        # Create a temporary directory for the new feed
+        import tempfile
+        import shutil
+        import os
+        from zipfile import ZipFile
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Extract the original feed
+            with ZipFile(self.feed_path, 'r') as zip_ref:
+                zip_ref.extractall(tmpdir)
+            
+            # Save the filtered routes with colors
+            filtered_routes.to_csv(os.path.join(tmpdir, 'routes.txt'), index=False)
+            
+            # Create the view spec for other files
+            view = {
+                'trips.txt': {'trip_id': list(qualifying_trips)},
+            }
+            
+            # Create temporary subset without routes
+            temp_output = os.path.join(tmpdir, 'temp_subset.zip')
+            ptg.extract_feed(
+                self.feed_path,
+                temp_output,
+                view
+            )
+            
+            # Extract the temporary subset
+            subset_dir = os.path.join(tmpdir, 'subset')
+            os.makedirs(subset_dir, exist_ok=True)
+            with ZipFile(temp_output, 'r') as zip_ref:
+                zip_ref.extractall(subset_dir)
+            
+            # Copy our modified routes.txt to the subset
+            shutil.copy(
+                os.path.join(tmpdir, 'routes.txt'),
+                os.path.join(subset_dir, 'routes.txt')
+            )
+            
+            # Create the final zip with all files including modified routes.txt
+            with ZipFile(output_path, 'w') as zip_ref:
+                for root, _, files in os.walk(subset_dir):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        arcname = os.path.relpath(file_path, subset_dir)
+                        zip_ref.write(file_path, arcname)
+        
         return GTFSAnalyzer(output_path)
+
+    def apply_route_colors_to_df(self, routes_df: pd.DataFrame, cmap: str = 'tab20c') -> Dict[str, str]:
+        """
+        Generate and apply colors to a routes DataFrame using a matplotlib colormap.
+        Routes are naturally sorted by route_short_name before color assignment.
+        Colors are stored without the '#' prefix and in uppercase.
+        """
+        import matplotlib.pyplot as plt
+        import numpy as np
+        
+        # Get route names and IDs as numpy arrays
+        route_names = routes_df['route_short_name'].fillna('').values
+        route_ids = routes_df['route_id'].values
+        
+        # Create sorted indices using natsort
+        sorted_idx = np.array(natsort.index_natsorted(route_names))
+        
+        # Apply sorting to both arrays at once
+        route_ids = route_ids[sorted_idx]
+        
+        # Generate colors vectorized
+        colormap = plt.get_cmap(cmap)
+        colors_rgba = colormap(np.linspace(0, 1, len(route_ids)))
+        
+        # Convert to hex colors using numpy operations
+        colors_rgb = (colors_rgba[:, :3] * 255).astype(np.uint8)
+        hex_colors = np.apply_along_axis(
+            lambda x: f'{x[0]:02X}{x[1]:02X}{x[2]:02X}', 1, colors_rgb  # Note: uppercase hex without #
+        )
+        
+        # Create the mapping
+        color_mapping = dict(zip(route_ids, hex_colors))
+        
+        # Update the routes DataFrame with new colors
+        routes_df['route_color'] = (
+            routes_df['route_id']
+            .map(color_mapping)
+            .fillna('')
+            .astype(str)  # Convert to string type
+        )
+        routes_df['route_text_color'] = 'FFFFFF'  # White text for contrast
+        
+        print(f"Successfully set colors for {routes_df['route_color'].ne('').sum()} routes")
+        
+        return color_mapping

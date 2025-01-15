@@ -14,12 +14,18 @@ def create_subset(input_gtfs: str, *,
                  stops_only: bool = False,
                  color_by: str = 'trips',
                  cmap: str = 'magma',
-                 route_cmap: str = 'magma',
+                 route_cmap: str = 'tab20c',
                  **kwargs) -> Path:
     """
     Create a GTFS subset with optional map visualization.
     Uses keyword-only arguments for clarity and safety.
+    Route colors are always applied using the specified colormap.
 
+    
+    Additional Parameters:
+    ---------------------
+    apply_colors : bool
+        If True, generates and prints route colors using the specified colormap
     Example usage:
         # Basic subsetting
         python gtfs_subset_cli.py input.zip -o output.zip
@@ -57,8 +63,10 @@ def create_subset(input_gtfs: str, *,
             filters.append(f"min{min_trips}")
         output = f"{Path(input_gtfs).stem}_{'_'.join(filters or ['full'])}.zip"
     
-    # Create subset
+    # Create analyzer instance
     analyzer = GTFSAnalyzer(input_gtfs)
+    
+    # Create subset (colors will be applied during subsetting)
     subset = analyzer.create_subset(
         output_path=output,
         stop_ids=stop_ids,
@@ -109,8 +117,8 @@ def main():
                       help='Metric to use for coloring stops')
     parser.add_argument('--cmap', default='magma',
                       help='Matplotlib colormap name for stops')
-    parser.add_argument('--route-cmap', default='magma',
-                      help='Matplotlib colormap name for routes')
+    parser.add_argument('--route-cmap', default='tab20c',
+                      help='Matplotlib colormap name for routes (default: tab20c)')
 
     args = parser.parse_args()
     create_subset(**vars(args))
