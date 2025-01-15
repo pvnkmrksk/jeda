@@ -17,7 +17,7 @@ def main():
     print("Analyzing main GTFS feed...")
     analyzer = GTFSAnalyzer(INPUT_GTFS)
     results = analyzer.analyze_stop_metrics()
-    top_stops = results['stops_by_trips'].iloc[4000:]
+    top_stops = results['stops_by_trips'].iloc[:]
     
     # Save stops list
     top_stops[['stop_id', 'stop_name', 'trip_count']].to_csv(
