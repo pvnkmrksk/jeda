@@ -276,7 +276,7 @@ COMMON_PARAMS="--line-width $LINE_WIDTH \
 # Run common pipeline once and save intermediate result
 log_section "Generating Maps"
 LOOM_JSON="$OUTPUT_DIR/${BASENAME}_loom.json"
-PIPELINE_CMD="gtfs2graph -m bus $SUBSET_GTFS | topo --smooth $SMOOTHING -d $MAX_AGGR_DIST | loom > $LOOM_JSON"
+PIPELINE_CMD="gtfs2graph -m bus $SUBSET_GTFS | topo --smooth $SMOOTHING -d $MAX_AGGR_DIST | loom  > $LOOM_JSON"
 log_cmd "$PIPELINE_CMD"
 eval "$PIPELINE_CMD"
 log_info "Created intermediate file: ${BASENAME}_loom.json"
