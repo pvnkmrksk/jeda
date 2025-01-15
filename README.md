@@ -136,3 +136,123 @@ cat examples/freiburg.json | sudo docker run -i loom octi
 ```
 docker run -v /home/user/gurobi:/gurobi loom <TOOL>
 ```
+
+New Script Abilities and Typical Pipelines
+------------------------------------------
+
+The `process_transit_map.sh` script automates the generation of transit maps from GTFS data. It supports various parameters for customization, such as:
+
+- `--stops` or `-s`: Comma-separated stop IDs
+- `--routes` or `-r`: Route number pattern
+- `--min-trips` or `-m`: Minimum trips per route (default: 15)
+- `--max-dist` or `-d`: Maximum aggregation distance in meters (default: 150)
+- `--smooth` or `-sm`: Smoothing value (default: 20)
+- `--output-dir` or `-o`: Output directory (default: output)
+- `--line-width` or `-w`: Line width (default: 20)
+- `--line-spacing` or `-sp`: Line spacing (default: 10)
+- `--outline-width` or `-ow`: Width of line outlines (default: 1)
+- `--station-label-size` or `-sl`: Station label text size (default: 60)
+- `--line-label-size` or `-ll`: Line label text size (default: 40)
+- `--padding` or `-p`: Padding, -1 for auto (default: -1)
+- `--text-shrink` or `-ts`: Text shrink percentage (default: 0.90)
+- `--verbose` or `-v`: Enable debug mode with verbose output
+
+Example Usage
+-------------
+
+To generate a transit map with default settings:
+
+```bash
+./process_transit_map.sh bmtc-2.zip
+```
+
+To specify stops and routes:
+
+```bash
+./process_transit_map.sh bmtc-2.zip --stops "3ie,sw" --routes "1,2,3"
+```
+
+To enable verbose output:
+
+```bash
+./process_transit_map.sh bmtc-2.zip --verbose
+```
+
+Standard Header
+---------------
+
+This project is licensed under a license respecting the original work it was derived from.
+
+ಪವನ ಕುಮಾರ ​| Pavan Kumar, PhD
+@pvnkmrksk
+
+Extended Pipeline Tools
+----------------------
+
+In addition to the core LOOM tools, this fork provides additional scripts for automated transit map generation and processing:
+
+### Process Transit Map Script (`process_transit_map.sh`)
+
+A comprehensive shell script that automates the entire pipeline from GTFS data to final SVG maps. The script handles:
+- GTFS subsetting and filtering
+- Geographic and schematic map generation
+- Automatic text size adjustment
+- Output organization
+
+#### Basic Usage
+
+```bash
+./process_transit_map.sh <gtfs_file.zip>
+```
+
+This will generate both geographic and schematic maps with default settings in the `output` directory.
+
+#### Common Use Cases
+
+1. Filter specific stops and routes:
+```bash
+./process_transit_map.sh input.zip --stops "stop1,stop2" --routes "1,2,3"
+```
+
+2. Adjust map appearance:
+```bash
+./process_transit_map.sh input.zip --line-width 25 --station-label-size 70
+```
+
+#### Pipeline Steps
+
+The script executes the following steps:
+1. GTFS subsetting: `gtfs_subset_cli.py` filters the input GTFS
+2. Graph generation: `gtfs2graph` converts GTFS to graph format
+3. Topology processing: `topo` handles overlapping edges
+4. Line ordering: `loom` optimizes line arrangements
+5. Map generation: `transitmap` creates the final SVG
+6. Post-processing: Adjusts text sizes and spacing
+
+#### Advanced Parameters
+
+Common parameters:
+- `--min-trips (-m)`: Minimum trips per route (default: 15)
+- `--max-dist (-d)`: Maximum aggregation distance (default: 150m)
+- `--smooth (-sm)`: Smoothing factor (default: 20)
+
+Visual customization:
+- `--line-width (-w)`: Line width (default: 20)
+- `--line-spacing (-sp)`: Space between lines (default: 10)
+- `--station-label-size (-sl)`: Station text size (default: 60)
+- `--line-label-size (-ll)`: Line number text size (default: 40)
+- `--text-shrink (-ts)`: Text adjustment factor (default: 0.90)
+
+Output control:
+- `--output-dir (-o)`: Output directory (default: output)
+- `--verbose (-v)`: Enable detailed logging
+
+License and Attribution
+----------------------
+
+This work is derived from the LOOM project and is licensed under the same terms as the original work.
+See the original papers and citations above for the foundational research.
+
+Extended functionality and automation scripts contributed by:
+ಪವನ ಕುಮಾರ ​| Pavan Kumar, PhD
+@pvnkmrksk

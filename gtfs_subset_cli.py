@@ -1,4 +1,41 @@
 #!/usr/bin/env python3
+
+"""
+GTFS Subset CLI Tool
+===================
+
+A command-line tool for creating filtered subsets of GTFS data based on various
+criteria such as specific stops, routes, or minimum trip counts. Part of the
+extended LOOM transit map toolkit.
+
+MIT License
+
+Copyright (c) 2024 Pavan Kumar (@pvnkmrksk)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+This work builds upon the LOOM project (https://github.com/ad-freiburg/loom)
+and is distributed under compatible terms.
+
+Author: ಪವನ ಕುಮಾರ ​| Pavan Kumar, PhD (@pvnkmrksk)
+"""
+
 import argparse
 from gtfs_analysis import GTFSAnalyzer
 from gtfs_map_viewer import GTFSMapCreator
@@ -18,36 +55,34 @@ def create_subset(input_gtfs: str, *,
                  route_cmap: str = 'tab20c',
                  **kwargs) -> Path:
     """
-    Create a GTFS subset with optional map visualization.
-    Uses keyword-only arguments for clarity and safety.
-    Route colors are always applied using the specified colormap.
+    Create a filtered GTFS subset with optional map visualization.
 
-    
-    Additional Parameters:
-    ---------------------
-    apply_colors : bool
-        If True, generates and prints route colors using the specified colormap
-    Example usage:
-        # Basic subsetting
-        python gtfs_subset_cli.py input.zip -o output.zip
-        
-        # Filter by stops
-        python gtfs_subset_cli.py input.zip -s "STOP1,STOP2,STOP3"
-        
-        # Filter by routes (with wildcards)
-        python gtfs_subset_cli.py input.zip -r "138*,KBS*"
-        
-        # Filter by minimum trips
-        python gtfs_subset_cli.py input.zip -m 10
-        
-        # Combine filters and create map
-        python gtfs_subset_cli.py input.zip -s "STOP1,STOP2" -r "138*" -m 10 --map
-        
-        # Create map with custom coloring
-        python gtfs_subset_cli.py input.zip --map --color-by routes --cmap viridis --route-cmap plasma
-        
-        # Show only stops on map
-        python gtfs_subset_cli.py input.zip --map --stops-only
+    This function provides a high-level interface for filtering GTFS data based on
+    various criteria and optionally generating a visualization of the result.
+
+    Args:
+        input_gtfs (str): Path to input GTFS zip file
+        output (str, optional): Output path for the filtered GTFS
+        stops (str, optional): Comma-separated stop IDs to include
+        routes (str, optional): Route patterns to match (supports wildcards)
+        min_trips (int, optional): Minimum trips per route
+        map (bool, optional): Generate HTML map visualization
+        map_output (str, optional): Custom path for map output
+        stops_only (bool, optional): Show only stops on map
+        color_by (str, optional): Metric for coloring ('trips'/'routes')
+        cmap (str, optional): Matplotlib colormap for stops
+        route_cmap (str, optional): Matplotlib colormap for routes
+        **kwargs: Additional parameters passed to map creation
+
+    Returns:
+        Path: Path to the generated GTFS subset
+
+    Example:
+        >>> create_subset('input.zip',
+        ...              stops='STOP1,STOP2',
+        ...              routes='138*',
+        ...              min_trips=10,
+        ...              map=True)
     """
     # Parse filters
     stop_ids = [s.strip() for s in stops.split(',')] if stops else None

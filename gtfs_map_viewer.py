@@ -1,3 +1,41 @@
+#!/usr/bin/env python3
+
+"""
+GTFS Map Viewer
+==============
+
+An interactive map visualization tool for GTFS data, providing customizable
+views of transit networks with route and stop information. Part of the
+extended LOOM transit map toolkit.
+
+MIT License
+
+Copyright (c) 2024 Pavan Kumar (@pvnkmrksk)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+This work builds upon the LOOM project (https://github.com/ad-freiburg/loom)
+and is distributed under compatible terms.
+
+Author: ಪವನ ಕುಮಾರ ​| Pavan Kumar, PhD (@pvnkmrksk)
+"""
+
 import pandas as pd
 import folium
 from pathlib import Path
@@ -7,49 +45,34 @@ import os
 import sys
 from branca.colormap import LinearColormap
 import numpy as np
-import matplotlib.pyplot as plt  # For colormaps
+import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap, to_hex
 
 class GTFSMapCreator:
     """
     Create interactive HTML maps from GTFS data with customizable visualizations.
-
-    Example usage:
-        # Basic usage
-        creator = GTFSMapCreator("input.zip")
-        creator.load_gtfs_data()
-        creator.create_map("output.html")
-        
-        # Show only stops
-        creator.create_map("stops_only.html", stops_only=True)
-        
-        # Color stops by route count
-        creator.create_map(
-            "routes_map.html",
-            color_by='routes',
-            cmap='viridis'
-        )
-        
-        # Custom coloring for both stops and routes
-        creator.create_map(
-            "custom_map.html",
-            color_by='trips',
-            cmap='YlOrRd',      # Yellow-Orange-Red colormap for stops
-            route_cmap='Blues'   # Blue colormap for routes
-        )
-
-    Command-line usage:
-        # Basic map
-        python gtfs_map_viewer.py input.zip
-        
-        # Custom output with route coloring
-        python gtfs_map_viewer.py input.zip --output map.html --cmap viridis --route-cmap magma
-        
-        # Color by route count
-        python gtfs_map_viewer.py input.zip --color-by routes --cmap YlOrRd
-        
-        # Stops only
-        python gtfs_map_viewer.py input.zip --stops-only
+    
+    This class provides functionality to generate interactive web maps showing
+    transit routes and stops, with various options for styling and coloring
+    based on metrics like trip frequency or route count.
+    
+    Attributes:
+        gtfs_path (str): Path to the GTFS zip file
+        stops_df (pd.DataFrame): DataFrame containing stop information
+        routes_df (pd.DataFrame): DataFrame containing route information
+        trips_df (pd.DataFrame): DataFrame containing trip information
+        stop_times_df (pd.DataFrame): DataFrame containing stop times
+        shapes_df (pd.DataFrame): DataFrame containing shape information
+    
+    Example:
+        >>> creator = GTFSMapCreator("input.zip")
+        >>> creator.load_gtfs_data()
+        >>> creator.create_map(
+        ...     "output.html",
+        ...     color_by='trips',
+        ...     cmap='magma',
+        ...     route_cmap='Blues'
+        ... )
     """
 
     def __init__(self, gtfs_path):

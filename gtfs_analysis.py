@@ -1,37 +1,74 @@
+#!/usr/bin/env python3
+
+"""
+GTFS Analysis Tool
+================
+
+A comprehensive tool for analyzing GTFS data, providing metrics and insights
+about transit networks. Supports data subsetting and route coloring. Part of
+the extended LOOM transit map toolkit.
+
+MIT License
+
+Copyright (c) 2024 Pavan Kumar (@pvnkmrksk)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+This work builds upon the LOOM project (https://github.com/ad-freiburg/loom)
+and is distributed under compatible terms.
+
+Author: ಪವನ ಕುಮಾರ ​| Pavan Kumar, PhD (@pvnkmrksk)
+"""
+
 import partridge as ptg
 import pandas as pd
 from typing import List, Set, Dict, Union
 from pathlib import Path
 import natsort
 import sys
+
 class GTFSAnalyzer:
     """
-    A class to analyze GTFS feeds with various metrics and subsetting capabilities.
-
-    Example usage:
-        # Basic usage
-        analyzer = GTFSAnalyzer("input.zip")
-        
-        # Analyze stops and routes
-        metrics = analyzer.analyze_stop_metrics("analysis_output")
-        
-        # Create subsets
-        # Get routes with at least 10 trips
-        subset = analyzer.create_subset("output.zip", min_trips=10)
-        
-        # Get specific stops and their routes
-        subset = analyzer.create_subset("output.zip", stop_ids=["STOP1", "STOP2"])
-        
-        # Get specific routes (supports wildcards)
-        subset = analyzer.create_subset("output.zip", route_patterns=["138*", "KBS*"])
-        
-        # Combine filters
-        subset = analyzer.create_subset(
-            "output.zip",
-            stop_ids=["STOP1", "STOP2"],
-            route_patterns=["138*"],
-            min_trips=10
-        )
+    A comprehensive analyzer for GTFS transit data.
+    
+    This class provides functionality for analyzing GTFS feeds, including:
+    - Computing various metrics about stops and routes
+    - Creating filtered subsets of GTFS data
+    - Applying consistent route coloring
+    
+    The analyzer supports various filtering criteria such as:
+    - Minimum trip counts per route
+    - Specific stops or routes
+    - Pattern matching for route names
+    
+    Attributes:
+        feed_path (str): Path to the GTFS feed file
+        feed (partridge.Feed): Loaded GTFS feed object
+    
+    Example:
+        >>> analyzer = GTFSAnalyzer("input.zip")
+        >>> metrics = analyzer.analyze_stop_metrics()
+        >>> subset = analyzer.create_subset(
+        ...     "output.zip",
+        ...     stop_ids=["STOP1", "STOP2"],
+        ...     min_trips=10
+        ... )
     """
     
     def __init__(self, feed_path: Union[str, Path]):

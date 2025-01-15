@@ -1,5 +1,69 @@
 #!/bin/bash
 
+# =============================================================================
+# Process Transit Map - Automated GTFS to Transit Map Pipeline
+# =============================================================================
+#
+# MIT License
+#
+# Copyright (c) 2024 Pavan Kumar (@pvnkmrksk)
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# This work builds upon the LOOM project (https://github.com/ad-freiburg/loom)
+# and is distributed under compatible terms.
+#
+# Author: ಪವನ ಕುಮಾರ ​| Pavan Kumar, PhD (@pvnkmrksk)
+#
+# =============================================================================
+#
+# Description:
+#   This script automates the generation of transit maps from GTFS data using
+#   the LOOM toolkit. It provides a streamlined pipeline for:
+#   - GTFS data subsetting and filtering
+#   - Geographic and schematic map generation
+#   - Automatic text size adjustment
+#   - Organized output management
+#
+# Usage:
+#   ./process_transit_map.sh <gtfs_file.zip> [options]
+#
+# Common Options:
+#   --stops, -s       : Comma-separated stop IDs
+#   --routes, -r      : Route number pattern
+#   --min-trips, -m   : Minimum trips per route (default: 15)
+#   --max-dist, -d    : Maximum aggregation distance (default: 150m)
+#   --smooth, -sm     : Smoothing factor (default: 20)
+#
+# Advanced Options:
+#   --line-width, -w  : Line width (default: 20)
+#   --line-spacing, -sp: Line spacing (default: 10)
+#   --station-label-size, -sl: Station text size (default: 60)
+#   --line-label-size, -ll  : Line number text size (default: 40)
+#   --text-shrink, -ts     : Text adjustment factor (default: 0.90)
+#   --verbose, -v          : Enable detailed logging
+#
+# Example:
+#   ./process_transit_map.sh input.zip --stops "stop1,stop2" --routes "1,2,3"
+#
+# =============================================================================
+
 # Logging functions
 log_section() {
     if [ "$DEBUG" = true ]; then
@@ -38,12 +102,17 @@ print_output_tree() {
     echo "├── Intermediate Files:"
     echo "│   └── ${basename}_loom.json"
     echo "└── Final Maps:"
-    echo "    ├── Geographic Maps:"
-    echo "    │   ├── ${basename}_geographic.svg"
-    echo "    │   └── ${basename}_geographic_adjusted.svg"
-    echo "    └── Schematic Maps:"
-    echo "        ├── ${basename}_schematic.svg"
-    echo "        └── ${basename}_schematic_adjusted.svg"
+    if [ "$DEBUG" = true ]; then
+        echo "    ├── Geographic Maps:"
+        echo "    │   ├── ${basename}_geographic.svg"
+        echo "    │   └── ${basename}_geographic_adjusted.svg"
+        echo "    └── Schematic Maps:"
+        echo "        ├── ${basename}_schematic.svg"
+        echo "        └── ${basename}_schematic_adjusted.svg"
+    else
+        echo "    ├── ${basename}_geographic.svg"
+        echo "    └── ${basename}_schematic.svg"
+    fi
 }
 
 # Default values
@@ -139,7 +208,7 @@ if [ -z "$1" ]; then
     echo "  --stops, -s              : Comma-separated stop IDs"
     echo "  --routes, -r             : Route number pattern"
     echo "  --min-trips, -m          : Minimum trips per route (default: 15)"
-    echo "  --max-dist, -d           : Maximum aggregation distance (default: 150)"
+    echo "  --max-dist, -d           : Maximum aggregation distance in meters (default: 150)"
     echo "  --smooth, -sm            : Smoothing value (default: 20)"
     echo "  --output-dir, -o         : Output directory (default: output)"
     echo "  --line-width, -w         : Line width (default: 20)"
@@ -148,7 +217,7 @@ if [ -z "$1" ]; then
     echo "  --station-label-size, -sl: Station label text size (default: 60)"
     echo "  --line-label-size, -ll   : Line label text size (default: 40)"
     echo "  --padding, -p            : Padding, -1 for auto (default: -1)"
-    echo "  --text-shrink, -ts        : Text shrink percentage (default: 0.85)"
+    echo "  --text-shrink, -ts        : Text shrink percentage (default: 0.90)"
     echo "  --debug, -d              : Enable debug mode with verbose output"
     exit 1
 fi
@@ -216,14 +285,12 @@ log_info "Generating geographic map"
 GEOGRAPHIC_CMD="cat $LOOM_JSON | transitmap $COMMON_PARAMS > $OUTPUT_DIR/${BASENAME}_geographic.svg"
 log_cmd "$GEOGRAPHIC_CMD"
 eval "$GEOGRAPHIC_CMD"
-log_info "Created: ${BASENAME}_geographic.svg"
 
 # Generate schematic map from loom output
 log_info "Generating schematic map"
 SCHEMATIC_CMD="cat $LOOM_JSON | octi | transitmap $COMMON_PARAMS > $OUTPUT_DIR/${BASENAME}_schematic.svg"
 log_cmd "$SCHEMATIC_CMD"
 eval "$SCHEMATIC_CMD"
-log_info "Created: ${BASENAME}_schematic.svg"
 
 # Create adjusted SVG files with shrunk text
 log_section "Post-Processing"
@@ -236,6 +303,26 @@ log_info "Created: ${BASENAME}_geographic_adjusted.svg"
 python3 adjust_svg.py "$OUTPUT_DIR/${BASENAME}_schematic.svg" "$SCHEMATIC_ADJUSTED" "$TEXT_SHRINK"
 log_info "Created: ${BASENAME}_schematic_adjusted.svg"
 
+# Clean up unadjusted SVGs unless in verbose mode
+if [ "$DEBUG" = false ]; then
+    rm -f "$OUTPUT_DIR/${BASENAME}_geographic.svg"
+    rm -f "$OUTPUT_DIR/${BASENAME}_schematic.svg"
+    # Rename adjusted files to be the main files
+    mv "$GEOGRAPHIC_ADJUSTED" "$OUTPUT_DIR/${BASENAME}_geographic.svg"
+    mv "$SCHEMATIC_ADJUSTED" "$OUTPUT_DIR/${BASENAME}_schematic.svg"
+fi
+
 # Print final output tree
 log_section "Summary"
-print_output_tree "$BASENAME" "$OUTPUT_DIR" 
+if [ "$DEBUG" = true ]; then
+    print_output_tree "$BASENAME" "$OUTPUT_DIR"
+else
+    echo -e "\nOutput files in $OUTPUT_DIR/:"
+    echo "├── GTFS Subset:"
+    echo "│   └── ${BASENAME}.zip"
+    echo "├── Intermediate Files:"
+    echo "│   └── ${BASENAME}_loom.json"
+    echo "└── Final Maps:"
+    echo "    ├── ${BASENAME}_geographic.svg"
+    echo "    └── ${BASENAME}_schematic.svg"
+fi 
