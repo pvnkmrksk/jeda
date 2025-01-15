@@ -311,5 +311,7 @@ def main():
     map_creator.load_gtfs_data()
     map_creator.create_map(**vars(args))
 
+    print(f"Map created successfully at {args.output}")
+
 if __name__ == "__main__":
     main() 

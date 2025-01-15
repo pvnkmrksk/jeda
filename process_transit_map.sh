@@ -32,39 +32,14 @@
 # Author: ಪವನ ಕುಮಾರ ​| Pavan Kumar, PhD (@pvnkmrksk)
 #
 # =============================================================================
-#
-# Description:
-#   This script automates the generation of transit maps from GTFS data using
-#   the LOOM toolkit. It provides a streamlined pipeline for:
-#   - GTFS data subsetting and filtering
-#   - Geographic and schematic map generation
-#   - Automatic text size adjustment
-#   - Organized output management
-#
-# Usage:
-#   ./process_transit_map.sh <gtfs_file.zip> [options]
-#
-# Common Options:
-#   --stops, -s       : Comma-separated stop IDs
-#   --routes, -r      : Route number pattern
-#   --min-trips, -m   : Minimum trips per route (default: 15)
-#   --max-dist, -d    : Maximum aggregation distance (default: 150m)
-#   --smooth, -sm     : Smoothing factor (default: 20)
-#
-# Advanced Options:
-#   --line-width, -w  : Line width (default: 20)
-#   --line-spacing, -sp: Line spacing (default: 10)
-#   --station-label-size, -sl: Station text size (default: 60)
-#   --line-label-size, -ll  : Line number text size (default: 40)
-#   --text-shrink, -ts     : Text adjustment factor (default: 0.90)
-#   --verbose, -v          : Enable detailed logging
-#
-# Example:
-#   ./process_transit_map.sh input.zip --stops "stop1,stop2" --routes "1,2,3"
-#
-# =============================================================================
 
-# Logging functions
+# Functions
+# -----------------------------------------------------------------------------
+
+# @description Print a section header in the output
+# @param $1 Section title to display
+# @example
+#   log_section "Processing GTFS"
 log_section() {
     if [ "$DEBUG" = true ]; then
         echo -e "\n=== $1 ===\n"
@@ -73,6 +48,10 @@ log_section() {
     fi
 }
 
+# @description Print an info message with appropriate formatting
+# @param $1 Message to display
+# @example
+#   log_info "Created GTFS subset"
 log_info() {
     if [ "$DEBUG" = true ]; then
         echo "INFO: $1"
@@ -81,6 +60,10 @@ log_info() {
     fi
 }
 
+# @description Print a command that will be executed (debug mode only)
+# @param $1 Command to display
+# @example
+#   log_cmd "gtfs2graph -m bus input.zip"
 log_cmd() {
     if [ "$DEBUG" = true ]; then
         echo -e "\nCommand to execute:"
@@ -88,10 +71,19 @@ log_cmd() {
     fi
 }
 
+# @description Print an error message to stderr
+# @param $1 Error message to display
+# @example
+#   log_error "Failed to create GTFS subset"
 log_error() {
     echo "ERROR: $1" >&2
 }
 
+# @description Print a tree view of output files
+# @param $1 Base name for output files
+# @param $2 Output directory path
+# @example
+#   print_output_tree "transit_map" "output"
 print_output_tree() {
     local basename="$1"
     local output_dir="$2"
@@ -115,6 +107,31 @@ print_output_tree() {
     fi
 }
 
+# @description Print usage information
+print_usage() {
+    echo "Usage: $0 <gtfs.zip> [options]"
+    echo
+    echo "Options:"
+    echo "  --stops, -s              : Comma-separated stop IDs"
+    echo "  --routes, -r             : Route number pattern"
+    echo "  --min-trips, -m          : Minimum trips per route (default: 15)"
+    echo "  --max-dist, -d           : Maximum aggregation distance in meters (default: 150)"
+    echo "  --smooth, -sm            : Smoothing value (default: 20)"
+    echo "  --output-dir, -o         : Output directory (default: output)"
+    echo "  --line-width, -w         : Line width (default: 20)"
+    echo "  --line-spacing, -sp      : Line spacing (default: 10)"
+    echo "  --outline-width, -ow     : Width of line outlines (default: 1)"
+    echo "  --station-label-size, -sl: Station label text size (default: 60)"
+    echo "  --line-label-size, -ll   : Line label text size (default: 40)"
+    echo "  --padding, -p            : Padding, -1 for auto (default: -1)"
+    echo "  --text-shrink, -ts       : Text shrink percentage (default: 0.85)"
+    echo "  --verbose, -v            : Enable debug mode with verbose output"
+    echo
+    echo "Example:"
+    echo "  $0 input.zip --stops \"stop1,stop2\" --routes \"1,2,3\" --min-trips 10"
+    exit 1
+}
+
 # Default values
 STOPS=""
 ROUTES=""
@@ -128,7 +145,7 @@ OUTLINE_WIDTH=1
 STATION_LABEL_SIZE=60
 LINE_LABEL_SIZE=40
 PADDING=-1
-TEXT_SHRINK=0.85  # Default text shrink percentage
+TEXT_SHRINK=0.85
 DEBUG=false
 
 # Parse command line arguments
@@ -203,23 +220,7 @@ set -- "${POSITIONAL_ARGS[@]}"
 
 # Check if GTFS file is provided
 if [ -z "$1" ]; then
-    echo "Usage: $0 <gtfs.zip> [options]"
-    echo "Options:"
-    echo "  --stops, -s              : Comma-separated stop IDs"
-    echo "  --routes, -r             : Route number pattern"
-    echo "  --min-trips, -m          : Minimum trips per route (default: 15)"
-    echo "  --max-dist, -d           : Maximum aggregation distance in meters (default: 150)"
-    echo "  --smooth, -sm            : Smoothing value (default: 20)"
-    echo "  --output-dir, -o         : Output directory (default: output)"
-    echo "  --line-width, -w         : Line width (default: 20)"
-    echo "  --line-spacing, -sp      : Line spacing (default: 10)"
-    echo "  --outline-width, -ow     : Width of line outlines (default: 1)"
-    echo "  --station-label-size, -sl: Station label text size (default: 60)"
-    echo "  --line-label-size, -ll   : Line label text size (default: 40)"
-    echo "  --padding, -p            : Padding, -1 for auto (default: -1)"
-    echo "  --text-shrink, -ts        : Text shrink percentage (default: 0.90)"
-    echo "  --debug, -d              : Enable debug mode with verbose output"
-    exit 1
+    print_usage
 fi
 
 GTFS_FILE=$1
@@ -274,9 +275,9 @@ COMMON_PARAMS="--line-width $LINE_WIDTH \
 
 # Run common pipeline once and save intermediate result
 log_section "Generating Maps"
-log_cmd "$PIPELINE_CMD"
 LOOM_JSON="$OUTPUT_DIR/${BASENAME}_loom.json"
 PIPELINE_CMD="gtfs2graph -m bus $SUBSET_GTFS | topo --smooth $SMOOTHING -d $MAX_AGGR_DIST | loom > $LOOM_JSON"
+log_cmd "$PIPELINE_CMD"
 eval "$PIPELINE_CMD"
 log_info "Created intermediate file: ${BASENAME}_loom.json"
 
