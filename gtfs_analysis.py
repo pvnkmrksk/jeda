@@ -135,7 +135,7 @@ class GTFSAnalyzer:
                     )
                 ]['trip_id']
             )
-            qualifying_trips = route_trips
+            # qualifying_trips = qualifying_trips
         
         # Then handle stops if specified
         if stop_ids and len(stop_ids) > 0:

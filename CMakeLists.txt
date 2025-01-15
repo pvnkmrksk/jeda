@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.10)
 
 project(loom)
 
@@ -76,14 +76,18 @@ set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS} -g -DLOGLEVEL=3")
 # export compile commands to tools like clang
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# http://brianmilco.blogspot.de/2012/11/cmake-automatically-use-git-tags-as.html
-include(GetGitRevisionDescription)
-git_get_tag(VERSION_GIT)
-get_git_is_dirty(VERSION_GIT_IS_DIRTY)
-if ("${VERSION_GIT_IS_DIRTY}" STREQUAL "")
-    set(VERSION_GIT_FULL "${VERSION_GIT}")
+# First make sure the module exists
+if(EXISTS "${CMAKE_SOURCE_DIR}/cmake/GetGitRevisionDescription.cmake")
+    include(GetGitRevisionDescription)
+    git_describe(VERSION_GIT --tags)
+    get_git_is_dirty(VERSION_GIT_IS_DIRTY)
+    if ("${VERSION_GIT_IS_DIRTY}" STREQUAL "")
+        set(VERSION_GIT_FULL "${VERSION_GIT}")
+    else()
+        set(VERSION_GIT_FULL "${VERSION_GIT}-${VERSION_GIT_IS_DIRTY}")
+    endif()
 else()
-    set(VERSION_GIT_FULL "${VERSION_GIT}-${VERSION_GIT_IS_DIRTY}")
+    set(VERSION_GIT_FULL "unknown")
 endif()
 
 add_subdirectory(src)
