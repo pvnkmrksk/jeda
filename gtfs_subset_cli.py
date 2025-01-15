@@ -3,6 +3,7 @@ import argparse
 from gtfs_analysis import GTFSAnalyzer
 from gtfs_map_viewer import GTFSMapCreator
 from pathlib import Path
+import sys
 
 def create_subset(input_gtfs: str, *, 
                  output: str = None,
@@ -61,7 +62,9 @@ def create_subset(input_gtfs: str, *,
             filters.append(f"routes_{'-'.join(route_patterns)}")
         if min_trips:
             filters.append(f"min{min_trips}")
-        output = f"{Path(input_gtfs).stem}_{'_'.join(filters or ['full'])}.zip"
+        output = str(Path(input_gtfs).resolve().with_name(
+            f"{Path(input_gtfs).stem}_{'_'.join(filters or ['full'])}.zip"
+        ))
     
     # Create analyzer instance
     analyzer = GTFSAnalyzer(input_gtfs)
@@ -74,15 +77,14 @@ def create_subset(input_gtfs: str, *,
         min_trips=min_trips
     )
     
-    # Print statistics
-    print(f"\nOutput GTFS: {output}")
-    print(f"\nSubset Statistics:")
-    print(f"Original routes: {len(analyzer.feed.routes)}")
-    print(f"Subset routes: {len(subset.feed.routes)}")
-    print(f"Original trips: {len(analyzer.feed.trips)}")
-    print(f"Subset trips: {len(subset.feed.trips)}")
-    print(f"Original stops: {len(analyzer.feed.stops)}")
-    print(f"Subset stops: {len(subset.feed.stops)}")
+    # Print statistics to stderr
+    print(f"\nSubset Statistics:", file=sys.stderr)
+    print(f"Original routes: {len(analyzer.feed.routes)}", file=sys.stderr)
+    print(f"Subset routes: {len(subset.feed.routes)}", file=sys.stderr)
+    print(f"Original trips: {len(analyzer.feed.trips)}", file=sys.stderr)
+    print(f"Subset trips: {len(subset.feed.trips)}", file=sys.stderr)
+    print(f"Original stops: {len(analyzer.feed.stops)}", file=sys.stderr)
+    print(f"Subset stops: {len(subset.feed.stops)}", file=sys.stderr)
     
     # Create map if requested
     if map:
@@ -97,8 +99,10 @@ def create_subset(input_gtfs: str, *,
             route_cmap=route_cmap,
             **kwargs
         )
-        print(f"Map created at: {map_path}")
+        print(f"Map created at: {map_path}", file=sys.stderr)
     
+    # Print the output path as the last line
+    print(output, file=sys.stderr)
     return Path(output)
 
 def main():

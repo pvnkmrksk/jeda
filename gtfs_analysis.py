@@ -3,7 +3,7 @@ import pandas as pd
 from typing import List, Set, Dict, Union
 from pathlib import Path
 import natsort
-
+import sys
 class GTFSAnalyzer:
     """
     A class to analyze GTFS feeds with various metrics and subsetting capabilities.
@@ -263,6 +263,6 @@ class GTFSAnalyzer:
         )
         routes_df['route_text_color'] = 'FFFFFF'  # White text for contrast
         
-        print(f"Successfully set colors for {routes_df['route_color'].ne('').sum()} routes")
+        print(f"Successfully set colors for {routes_df['route_color'].ne('').sum()} routes", file=sys.stderr)
         
         return color_mapping
