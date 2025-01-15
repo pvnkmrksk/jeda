@@ -1,258 +1,163 @@
-[![2015 Stuttgart light rail network maps generated from GTFS data, with optimal line orderings, geographically correct (left), octilinear (middle), and  orthoradial (right).](examples/render/stuttgart-example-small.png?raw=true)](examples/render/stuttgart-example.png?raw=true)
-*2015 Stuttgart light rail network maps generated from GTFS data, with optimal line orderings, geographically correct (left), octilinear (middle), and  orthoradial (right).*
+# Magga (ಮಗ್ಗ/मग्ग)
 
-[![Build](https://github.com/ad-freiburg/loom/actions/workflows/build.yml/badge.svg)](https://github.com/ad-freiburg/loom/actions/workflows/build.yml)
+[![Build](https://github.com/pvnkmrksk/magga/actions/workflows/build.yml/badge.svg)](https://github.com/pvnkmrksk/magga/actions/workflows/build.yml)
 
-LOOM
-====
+A toolkit for weaving transit data into beautiful, meaningful maps.
 
-Software suite for the automated generation of geographically correct or schematic transit maps.
+## About Magga
 
-Based on our work in the following papers:
-[Bast H., Brosi P., Storandt S., Efficient Generation of Geographically Accurate Transit Maps, SIGSPATIAL 2018](http://ad-publications.informatik.uni-freiburg.de/SIGSPATIAL_transitmaps_2018.pdf)
-[Bast H., Brosi P., Storandt S., Efficient Generation of Geographically Accurate Transit Maps (extended version), ACM TSAS, Vol. 5, No. 4, Article 25, 2019](http://ad-publications.informatik.uni-freiburg.de/ACM_efficient%20Generation%20of%20%20Geographically%20Accurate%20Transit%20Maps_extended%20version.pdf)
-[Bast H., Brosi P., Storandt S., Metro Maps on Octilinear Grid Graphs, EuroVis 2020](http://ad-publications.informatik.uni-freiburg.de/EuroVis%20octi-maps.pdf)
-[Bast H., Brosi P., Storandt S., Metro Maps on Flexible Base Grids, SSTD 2021](http://ad-publications.informatik.uni-freiburg.de/SSTD_Metro%20Maps%20on%20Flexible%20Base%20Grids.pdf).
-A pipeline for generating geographically accurate transit maps which appears to be similar to ours was described by Anton Dubrau in a [blog post](https://blog.transitapp.com/how-we-built-the-worlds-prettiest-auto-generated-transit-maps-12d0c6fa502f).
+"Magga" carries dual meaning - a loom (ಮಗ್ಗ) in Kannada that weaves intricate patterns, and "path" (मग्ग) in Pali Buddhism, referring to the noble path to enlightenment. This duality perfectly captures our mission: just as a loom weaves threads into beautiful patterns, we weave transit routes into readable maps. And just as the Noble Eightfold Path guides beings toward enlightenment, accessible public transit guides communities toward sustainability and equity.
 
-Also see our web demos [here](https://loom.cs.uni-freiburg.de/), [here](https://loom.cs.uni-freiburg.de/global), and [here](https://octi.cs.uni-freiburg.de).
+In cities where most of humanity now lives and where the majority of CO2 emissions occur, public transit serves as a crucial path toward:
+- Reducing environmental impact and fighting climate change
+- Connecting people to opportunities and lifting communities from poverty
+- Creating more livable, sustainable urban spaces
+- Weaving the social fabric that binds communities together
 
-Requirements
-------------
+## Features
 
- * `cmake`
- * `gcc >= 5.0` (or `clang >= 3.9`)
- * Optional: `libglpk-dev`, `coinor-libcbc-dev`, `gurobi`, `libzip-dev`, `libprotobuf-dev`
+- Generate both geographic and schematic transit maps
+- Interactive visualization tools for exploring transit networks
+- Flexible filtering and subsetting of GTFS data
+- Customizable styling and appearance
+- Automated text size adjustment for optimal readability
+- Support for various transit modes (bus, tram, rail, etc.)
 
+## Quick Start
 
-Building and Installation
--------------------------
+### Installation
 
-Fetch this repository and init submodules:
-
-```
-git clone --recurse-submodules https://github.com/ad-freiburg/loom.git
-```
-
-Build and install:
-
-```
-cd loom
+```bash
+git clone --recurse-submodules https://github.com/pvnkmrksk/magga.git
+cd magga
 mkdir build && cd build
 cmake ..
 make -j
 ```
 
-To (optionally) install, type
-```
+Optionally install system-wide:
+```bash
 make install
 ```
 
-You can also use the binaries in `./build` directly.
+### Basic Usage
 
-Usage
-=====
-
-This suite consists of several tools:
-
-* `gtfs2graph`, create a GeoJSON line graph from GTFS data
-* `topo`, create an overlapping-free line graph from an arbitrary line graph
-* `loom`, find optimal line orderings on a line graph
-* `octi`, create a schematic version of a line graph
-* `transitmap`, render a line graph into an SVG map (`--render-engine=svg`) or into vector tiles (`--render-engine=mvt`)
-
-All tools output a graph, in the GeoJSON format, to `stdout`, and expect a GeoJSON graph at `stdin`. Exceptions are `gtfs2graph`, where the input is a GTFS feed, and `transitmap`, which writes SVG to `stdout` or MVT vector tiles to a specified folder.
-
-The `example` folder contains several overlapping-free line graphs.
-
-To render the geographically correct Stuttgart map from above, use
-```
-cat examples/stuttgart.json | loom | transitmap > stuttgart.svg
+Generate a transit map from GTFS data:
+```bash
+./process_transit_map.sh input.zip
 ```
 
-To also render labels, use
-
-```
-cat examples/stuttgart.json | loom | transitmap -l > stuttgart-label.svg
-```
-
-To render an *octilinear* map, put the `octi` tool into the pipe:
-
-```
-cat examples/stuttgart.json | loom | octi | transitmap -l > stuttgart-octilin.svg
+Filter specific routes and stops:
+```bash
+./process_transit_map.sh input.zip --stops "stop1,stop2" --routes "1,2,3"
 ```
 
-To render for example the orthoradial map from above, use a different base graph for `octi`:
-
-```
-cat examples/stuttgart.json | loom | octi -b orthoradial | transitmap -l > stuttgart-orthorad.svg
-```
-
-Line graph extraction from GTFS
--------------------------------
-
-To extract for example a line graph for streetcars from GTFS data, use `gtfs2graph` as follows:
-
-```
-gtfs2graph -m tram freiburg.zip > freiburg.json
+Create an interactive web visualization:
+```bash
+python gtfs_map_viewer.py input.zip
 ```
 
-This line graph will have many overlapping edges and stations. To create an overlapping-free line graph ready for rendering, add `topo`:
+### Manual Pipeline
 
-```
-gtfs2graph -m tram freiburg.zip | topo > freiburg.json
-```
-
-A full pipeline for creating an octilinear map of the Freiburg tram network would look like this:
-```
-gtfs2graph -m tram freiburg.zip | topo | loom | octi | transitmap > freiburg-tram.svg
-```
-
-Usage via Docker
-================
-
-You can also use any tool in a Docker container via the provided Dockerfile.
-
-To build the container:
-
-```
-docker build -t loom
-```
-
-To run a tool from the suite, use
-
-```
-docker run -i loom <TOOL>
-```
-
-For example, to octilinearize the Freiburg example, use
-
-```
-cat examples/freiburg.json | sudo docker run -i loom octi
-```
-
-*Note*: if you want to use gurobi for ILP optimization, you *must* mount a folder container a valid gurobi license file `gurobi.lic` to `/gurobi/` in the container. For example, if your `gurobi.lic` is in `/home/user/gurobi`:
-
-```
-docker run -v /home/user/gurobi:/gurobi loom <TOOL>
-```
-
-New Script Abilities and Typical Pipelines
-------------------------------------------
-
-The `process_transit_map.sh` script automates the generation of transit maps from GTFS data. It supports various parameters for customization, such as:
-
-- `--stops` or `-s`: Comma-separated stop IDs
-- `--routes` or `-r`: Route number pattern
-- `--min-trips` or `-m`: Minimum trips per route (default: 15)
-- `--max-dist` or `-d`: Maximum aggregation distance in meters (default: 150)
-- `--smooth` or `-sm`: Smoothing value (default: 20)
-- `--output-dir` or `-o`: Output directory (default: output)
-- `--line-width` or `-w`: Line width (default: 20)
-- `--line-spacing` or `-sp`: Line spacing (default: 10)
-- `--outline-width` or `-ow`: Width of line outlines (default: 1)
-- `--station-label-size` or `-sl`: Station label text size (default: 60)
-- `--line-label-size` or `-ll`: Line label text size (default: 40)
-- `--padding` or `-p`: Padding, -1 for auto (default: -1)
-- `--text-shrink` or `-ts`: Text shrink percentage (default: 0.90)
-- `--verbose` or `-v`: Enable debug mode with verbose output
-
-Example Usage
--------------
-
-To generate a transit map with default settings:
+For more control, you can run the pipeline tools individually:
 
 ```bash
-./process_transit_map.sh bmtc-2.zip
+# Create a filtered subset of GTFS data
+python gtfs_subset_cli.py input.zip --stops "3ie,sw" -m 15 -o subset.zip
+
+# Generate maps using the pipeline
+gtfs2graph -m bus subset.zip | \
+    topo --smooth 20 -d 150 | \
+    loom | \
+    octi | \
+    transitmap -l --tight-stations --render-dir-markers > output.svg
+
+# For geographic maps, skip octilinearization
+gtfs2graph -m bus subset.zip | \
+    topo --smooth 20 -d 150 | \
+    loom | \
+    transitmap -l --tight-stations --render-dir-markers > geographic.svg
 ```
 
-To specify stops and routes:
+Each step in the pipeline serves a specific purpose:
+- `gtfs2graph`: Converts GTFS to a graph format
+- `topo`: Handles overlapping edges and station clustering
+- `loom`: Optimizes line arrangements
+- `octi`: Creates schematic (octilinear) layouts
+- `transitmap`: Renders the final SVG with labels and styling
 
-```bash
-./process_transit_map.sh bmtc-2.zip --stops "3ie,sw" --routes "1,2,3"
-```
+## Tools Overview
 
-To enable verbose output:
-
-```bash
-./process_transit_map.sh bmtc-2.zip --verbose
-```
-
-Standard Header
----------------
-
-This project is licensed under a license respecting the original work it was derived from.
-
-ಪವನ ಕುಮಾರ ​| Pavan Kumar, PhD
-@pvnkmrksk
-
-Extended Pipeline Tools
-----------------------
-
-In addition to the core LOOM tools, this fork provides additional scripts for automated transit map generation and processing:
-
-### Process Transit Map Script (`process_transit_map.sh`)
-
-A comprehensive shell script that automates the entire pipeline from GTFS data to final SVG maps. The script handles:
+### process_transit_map.sh
+The main pipeline tool that automates the entire process from GTFS to final maps. It handles:
 - GTFS subsetting and filtering
 - Geographic and schematic map generation
 - Automatic text size adjustment
 - Output organization
 
-#### Basic Usage
+### gtfs_subset_cli.py
+A tool for creating focused subsets of GTFS data based on:
+- Specific stops or routes
+- Minimum trip counts
+- Pattern matching for route names
+
+### gtfs_map_viewer.py
+Interactive web visualization tool featuring:
+- Route visualization with frequency-based styling
+- Stop visualization with customizable metrics
+- Detailed information popups
+- Multiple color scheme options
+
+### adjust_svg.py
+Post-processing tool for optimizing text sizes and spacing in generated maps.
+
+## Requirements
+
+Core requirements:
+* `cmake`
+* `gcc >= 5.0` (or `clang >= 3.9`)
+* Python 3.6+
+
+Optional dependencies for enhanced functionality:
+* `libglpk-dev`
+* `coinor-libcbc-dev`
+* `gurobi`
+* `libzip-dev`
+* `libprotobuf-dev`
+
+## Docker Usage
+
+You can also use the tools via Docker:
 
 ```bash
-./process_transit_map.sh <gtfs_file.zip>
+docker build -t magga .
+docker run -i magga <TOOL>
 ```
 
-This will generate both geographic and schematic maps with default settings in the `output` directory.
-
-#### Common Use Cases
-
-1. Filter specific stops and routes:
+For Gurobi optimization, mount your license:
 ```bash
-./process_transit_map.sh input.zip --stops "stop1,stop2" --routes "1,2,3"
+docker run -v /path/to/gurobi:/gurobi magga <TOOL>
 ```
 
-2. Adjust map appearance:
-```bash
-./process_transit_map.sh input.zip --line-width 25 --station-label-size 70
-```
+## Contributing
 
-#### Pipeline Steps
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-The script executes the following steps:
-1. GTFS subsetting: `gtfs_subset_cli.py` filters the input GTFS
-2. Graph generation: `gtfs2graph` converts GTFS to graph format
-3. Topology processing: `topo` handles overlapping edges
-4. Line ordering: `loom` optimizes line arrangements
-5. Map generation: `transitmap` creates the final SVG
-6. Post-processing: Adjusts text sizes and spacing
+## License
 
-#### Advanced Parameters
+MIT License - see LICENSE file for details.
 
-Common parameters:
-- `--min-trips (-m)`: Minimum trips per route (default: 15)
-- `--max-dist (-d)`: Maximum aggregation distance (default: 150m)
-- `--smooth (-sm)`: Smoothing factor (default: 20)
+## Acknowledgments
 
-Visual customization:
-- `--line-width (-w)`: Line width (default: 20)
-- `--line-spacing (-sp)`: Space between lines (default: 10)
-- `--station-label-size (-sl)`: Station text size (default: 60)
-- `--line-label-size (-ll)`: Line number text size (default: 40)
-- `--text-shrink (-ts)`: Text adjustment factor (default: 0.90)
+This work builds upon the foundational research and implementation of the LOOM project by Hannah Bast, Patrick Brosi, and Sabine Storandt. Their groundbreaking work in transit map generation is documented in:
 
-Output control:
-- `--output-dir (-o)`: Output directory (default: output)
-- `--verbose (-v)`: Enable detailed logging
+- [Efficient Generation of Geographically Accurate Transit Maps](http://ad-publications.informatik.uni-freiburg.de/SIGSPATIAL_transitmaps_2018.pdf) (SIGSPATIAL 2018)
+- [Metro Maps on Octilinear Grid Graphs](http://ad-publications.informatik.uni-freiburg.de/EuroVis%20octi-maps.pdf) (EuroVis 2020)
+- [Metro Maps on Flexible Base Grids](http://ad-publications.informatik.uni-freiburg.de/SSTD_Metro%20Maps%20on%20Flexible%20Base%20Grids.pdf) (SSTD 2021)
 
-License and Attribution
-----------------------
+We are grateful to stand on the shoulders of these giants in our mission to make transit networks more accessible and understandable.
 
-This work is derived from the LOOM project and is licensed under the same terms as the original work.
-See the original papers and citations above for the foundational research.
+## Author
 
-Extended functionality and automation scripts contributed by:
-ಪವನ ಕುಮಾರ ​| Pavan Kumar, PhD
-@pvnkmrksk
+ಪವನ ಕುಮಾರ ​| Pavan Kumar, PhD  
+[@pvnkmrksk](https://github.com/pvnkmrksk)
