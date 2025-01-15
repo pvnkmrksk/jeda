@@ -113,29 +113,45 @@ class GTFSAnalyzer:
         output_path : str
             Path where the subset GTFS will be saved
         stop_ids : List[str], optional
-            List of stop IDs to include. If provided without routes, includes all routes serving these stops.
+            List of stop IDs to include. All routes serving these stops will be included.
         route_patterns : List[str], optional
-            List of route patterns (supports wildcards like "138*"). If provided without stops, 
-            includes only stops served by these routes.
+            List of route patterns (supports wildcards like "138*"). Only stops served by 
+            these routes will be included.
         min_trips : int, optional
             Minimum number of trips a route must have to be included
         """
         qualifying_trips = set()
+        stops_to_keep = set()
         
         # First handle route patterns if specified
         if route_patterns and len(route_patterns) > 0:
-            qualifying_trips = set(
-                self.feed.trips[
-                    self.feed.trips['route_id'].isin(
-                        self.feed.routes[
-                            self.feed.routes['route_short_name'].str.match(
-                                '|'.join(p.replace('*', '.*') for p in route_patterns),
-                                na=False
-                            )
-                        ]['route_id']
-                    )
-                ]['trip_id']
-            )
+            for pattern in route_patterns:
+                if '*' in pattern:
+                    # Wildcard pattern, use regex match
+                    matching_routes = self.feed.routes[
+                        self.feed.routes['route_short_name'].str.match(
+                            pattern.replace('*', '.*'),
+                            na=False
+                        )
+                    ]['route_id']
+                else:
+                    # Exact match
+                    matching_routes = self.feed.routes[
+                        self.feed.routes['route_short_name'].str.fullmatch(pattern, na=False)
+                    ]['route_id']
+                qualifying_trips.update(
+                    self.feed.trips[
+                        self.feed.trips['route_id'].isin(matching_routes)
+                    ]['trip_id']
+                )
+
+            # If only routes specified, get only stops served by these routes
+            if not stop_ids:
+                stops_to_keep.update(
+                    self.feed.stop_times[
+                        self.feed.stop_times['trip_id'].isin(qualifying_trips)
+                    ]['stop_id']
+                )
         
         # Then handle stops if specified
         if stop_ids and len(stop_ids) > 0:
@@ -144,17 +160,13 @@ class GTFSAnalyzer:
                     self.feed.stop_times['stop_id'].isin(stop_ids)
                 ]['trip_id']
             )
-            # If routes were specified, intersect with stop_trips
-            # If no routes were specified, use all trips through these stops
-            qualifying_trips = (
-                qualifying_trips & stop_trips 
-                if qualifying_trips 
-                else stop_trips
-            )
+            qualifying_trips.update(stop_trips)
+            stops_to_keep.update(stop_ids)
         
-        # If neither stops nor routes specified, use all trips
+        # If neither stops nor routes specified, use all trips and stops
         if not qualifying_trips:
             qualifying_trips = set(self.feed.trips['trip_id'])
+            stops_to_keep = set(self.feed.stops['stop_id'])
         
         # Apply minimum trips filter if specified
         if min_trips:
@@ -164,14 +176,6 @@ class GTFSAnalyzer:
         routes_to_keep = set(self.feed.trips[
             self.feed.trips['trip_id'].isin(qualifying_trips)
         ]['route_id'])
-        
-        # Create a filtered routes DataFrame with colors
-        filtered_routes = self.feed.routes[
-            self.feed.routes['route_id'].isin(routes_to_keep)
-        ].copy()
-        
-        # Apply colors to only the filtered routes
-        color_mapping = self.apply_route_colors_to_df(filtered_routes)
         
         # Create a temporary directory for the new feed
         import tempfile
@@ -185,14 +189,22 @@ class GTFSAnalyzer:
                 zip_ref.extractall(tmpdir)
             
             # Save the filtered routes with colors
+            filtered_routes = self.feed.routes[
+                self.feed.routes['route_id'].isin(routes_to_keep)
+            ].copy()
+            color_mapping = self.apply_route_colors_to_df(filtered_routes)
             filtered_routes.to_csv(os.path.join(tmpdir, 'routes.txt'), index=False)
             
             # Create the view spec for other files
             view = {
                 'trips.txt': {'trip_id': list(qualifying_trips)},
+                'stops.txt': {'stop_id': list(stops_to_keep)} if stops_to_keep else None
             }
             
-            # Create temporary subset without routes
+            # Filter out None values from view
+            view = {k: v for k, v in view.items() if v is not None}
+            
+            # Create temporary subset
             temp_output = os.path.join(tmpdir, 'temp_subset.zip')
             ptg.extract_feed(
                 self.feed_path,
