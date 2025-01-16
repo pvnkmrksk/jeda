@@ -161,3 +161,50 @@ We are grateful to stand on the shoulders of these giants in our mission to make
 
 ಪವನ ಕುಮಾರ ​| Pavan Kumar, PhD  
 [@pvnkmrksk](https://github.com/pvnkmrksk)
+
+## TODO
+
+### Name Processing
+- [ ] Procedural name shortening
+  - Implement intelligent abbreviation rules for common words (Street → St, Road → Rd)
+  - Handle multilingual name variants
+  - Preserve uniqueness while shortening
+  - Configure maximum name length threshold
+
+### Stop Consolidation
+- [ ] Lat-long based stop merging
+  - Merge stops with identical names within configurable distance threshold
+  - Preserve all stop IDs for routing purposes
+  - Calculate centroid for merged stop placement
+  - Handle edge cases with partial name matches
+
+### Subsetting Features
+- [ ] Distance-based network subsetting
+  - Implement radius-based filtering from focus stop(s)
+  - Support multiple foci with union/intersection options
+  - Include connecting routes between included stops
+  - Preserve network connectivity
+
+### Route Filtering
+- [ ] Pattern-based route exclusion
+  - Support glob patterns for route exclusion (e.g., "Night*", "X*")
+  - Allow regex patterns for complex matching
+  - Implement whitelist/blacklist functionality
+  - Preserve route dependencies
+
+### Major Junction Handling
+- [ ] Junction detection and labeling
+  - Identify major junctions based on:
+    - Number of intersecting routes
+    - Passenger volume/frequency
+    - Geographic importance
+  - Smart label placement for major junctions
+  - Configurable importance thresholds
+  - Option to show only major junction labels
+
+### Map Visualization
+- [ ] Junction-focused display
+  - Implement toggle for junction-only view
+  - Scale junction markers by importance
+  - Smart label density control
+  - Maintain visual hierarchy
