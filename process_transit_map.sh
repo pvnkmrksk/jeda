@@ -316,8 +316,12 @@ fi
 mv -f "$SUBSET_GTFS" "$OUTPUT_DIR/"
 SUBSET_GTFS="$OUTPUT_DIR/$(basename $SUBSET_GTFS)"
 
+# Save a debug copy of the subset
+cp "$SUBSET_GTFS" "debug_subset.zip"
+
 log_info "Created GTFS subset"
 log_info "Output: ${BASENAME}.zip"
+log_info "Debug copy: debug_subset.zip"
 
 # Common parameters for transitmap
 COMMON_PARAMS="--line-width $LINE_WIDTH \
@@ -336,7 +340,12 @@ LOOM_JSON="$OUTPUT_DIR/${BASENAME}_loom.json"
 PIPELINE_CMD="gtfs2graph -m bus $SUBSET_GTFS | topo --smooth $SMOOTHING -d $MAX_AGGR_DIST | loom  > $LOOM_JSON"
 log_cmd "$PIPELINE_CMD"
 eval "$PIPELINE_CMD"
+
+# Save a debug copy of the loom JSON
+cp "$LOOM_JSON" "debug_loom.json"
+
 log_info "Created intermediate file: ${BASENAME}_loom.json"
+log_info "Debug copy: debug_loom.json"
 
 # Generate geographic map from loom output
 log_info "Generating geographic map"
